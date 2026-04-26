@@ -1,0 +1,108 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "name": "Market Terminal",
+  "description": "Polymarket-inspired tokens for a modern financial dashboard.",
+  "color": {
+    "light": {
+      "page": { "value": "#f7f8fa" },
+      "surface": { "value": "#ffffff" },
+      "surfaceMuted": { "value": "#f2f2f2" },
+      "surfaceRaised": { "value": "#ffffff" },
+      "text": { "value": "#111827" },
+      "textMuted": { "value": "#858a98" },
+      "textSubtle": { "value": "#9ca3af" },
+      "border": { "value": "#e5e7eb" },
+      "borderSubtle": { "value": "#f2f2f2" },
+      "grid": { "value": "#e0e0e0" },
+      "axis": { "value": "#77808d" },
+      "primary": { "value": "#1652f0" },
+      "primaryHover": { "value": "#0f45d8" },
+      "primarySoft": { "value": "#eef4ff" },
+      "positive": { "value": "#00b955" },
+      "positiveSoft": { "value": "#e8f8ef" },
+      "negative": { "value": "#e64800" },
+      "negativeSoft": { "value": "#fff0ea" },
+      "neutral": { "value": "#858a98" },
+      "warning": { "value": "#f59e0b" }
+    },
+    "dark": {
+      "page": { "value": "#172330" },
+      "surface": { "value": "#1d2b39" },
+      "surfaceMuted": { "value": "#2c3f4f" },
+      "surfaceRaised": { "value": "#233444" },
+      "text": { "value": "#ffffff" },
+      "textMuted": { "value": "#858d92" },
+      "textSubtle": { "value": "#6f7f8d" },
+      "border": { "value": "#344452" },
+      "borderSubtle": { "value": "#2c3f4f" },
+      "grid": { "value": "#344452" },
+      "axis": { "value": "#899cb2" },
+      "primary": { "value": "#2d9cdb" },
+      "primaryHover": { "value": "#55b8ed" },
+      "primarySoft": { "value": "#17374a" },
+      "positive": { "value": "#00b955" },
+      "positiveSoft": { "value": "#103b2a" },
+      "negative": { "value": "#e64800" },
+      "negativeSoft": { "value": "#4a2519" },
+      "neutral": { "value": "#858d92" },
+      "warning": { "value": "#f59e0b" }
+    }
+  },
+  "font": {
+    "family": {
+      "sans": { "value": "\"Open Sauce Sans\", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif" },
+      "mono": { "value": "\"SFMono-Regular\", Consolas, \"Liberation Mono\", monospace" }
+    },
+    "size": {
+      "xs": { "value": "10px" },
+      "sm": { "value": "11px" },
+      "md": { "value": "13px" },
+      "lg": { "value": "15px" },
+      "xl": { "value": "18px" },
+      "xxl": { "value": "22px" }
+    },
+    "lineHeight": {
+      "xs": { "value": "12px" },
+      "sm": { "value": "13px" },
+      "md": { "value": "17px" },
+      "lg": { "value": "19px" },
+      "xl": { "value": "21px" },
+      "xxl": { "value": "28px" }
+    },
+    "weight": {
+      "normal": { "value": "400" },
+      "medium": { "value": "500" },
+      "semibold": { "value": "600" },
+      "bold": { "value": "700" }
+    }
+  },
+  "space": {
+    "0": { "value": "0" },
+    "1": { "value": "4px" },
+    "2": { "value": "8px" },
+    "3": { "value": "12px" },
+    "4": { "value": "16px" },
+    "5": { "value": "20px" },
+    "6": { "value": "24px" },
+    "8": { "value": "32px" },
+    "10": { "value": "40px" }
+  },
+  "radius": {
+    "xs": { "value": "4px" },
+    "sm": { "value": "6px" },
+    "md": { "value": "8px" },
+    "lg": { "value": "12px" },
+    "xl": { "value": "16px" },
+    "full": { "value": "999px" }
+  },
+  "shadow": {
+    "card": { "value": "0 1px 2px rgba(16, 24, 40, 0.04)" },
+    "popover": { "value": "0 16px 40px rgba(16, 24, 40, 0.14)" },
+    "focus": { "value": "0 0 0 3px rgba(22, 82, 240, 0.16)" }
+  },
+  "motion": {
+    "fast": { "value": "100ms ease" },
+    "base": { "value": "160ms ease" },
+    "slow": { "value": "240ms ease" }
+  }
+}

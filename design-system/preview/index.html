@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Market Terminal Design System Preview</title>
+    <link rel="stylesheet" href="../css/market-system.css" />
+  </head>
+  <body>
+    <div class="mt-app">
+      <aside class="mt-sidebar">
+        <div class="mt-brand">
+          <div class="mt-brand-mark" aria-hidden="true"></div>
+          DataOcean
+        </div>
+        <nav class="mt-nav" aria-label="Primary">
+          <a class="mt-nav-item" data-active="true" href="#"><span class="mt-dot"></span> Overview</a>
+          <a class="mt-nav-item" href="#"><span class="mt-dot"></span> Markets</a>
+          <a class="mt-nav-item" href="#"><span class="mt-dot"></span> Revenue</a>
+          <a class="mt-nav-item" href="#"><span class="mt-dot"></span> Servers</a>
+          <a class="mt-nav-item" href="#"><span class="mt-dot"></span> Alerts</a>
+          <a class="mt-nav-item" href="#"><span class="mt-dot"></span> Sources</a>
+        </nav>
+      </aside>
+
+      <main class="mt-main">
+        <header class="mt-topbar">
+          <div>
+            <h1 class="mt-card-title" style="font-size:18px;line-height:21px;">Live Operations</h1>
+            <p class="mt-card-subtitle">Unified revenue, infra, and market-style signals</p>
+          </div>
+          <div class="mt-toolbar">
+            <div class="mt-segmented" role="group" aria-label="Time range">
+              <button class="mt-segment">1H</button>
+              <button class="mt-segment" data-active="true">1D</button>
+              <button class="mt-segment">1W</button>
+              <button class="mt-segment">1M</button>
+              <button class="mt-segment">ALL</button>
+            </div>
+            <button class="mt-button">Refresh</button>
+            <button class="mt-button" data-variant="primary">Add panel</button>
+          </div>
+        </header>
+
+        <section class="mt-grid">
+          <article class="mt-card mt-kpi">
+            <div class="mt-kpi-label">Revenue</div>
+            <div class="mt-kpi-value">$128.4K</div>
+            <div class="mt-kpi-meta"><span class="mt-badge" data-intent="positive">+12.8%</span> vs prior day</div>
+          </article>
+
+          <article class="mt-card mt-kpi">
+            <div class="mt-kpi-label">Requests</div>
+            <div class="mt-kpi-value">42.8M</div>
+            <div class="mt-kpi-meta"><span class="mt-badge">live</span> 142 regions</div>
+          </article>
+
+          <article class="mt-card mt-kpi">
+            <div class="mt-kpi-label">Error Rate</div>
+            <div class="mt-kpi-value">0.18%</div>
+            <div class="mt-kpi-meta"><span class="mt-badge" data-intent="negative">+0.04%</span> p95 stable</div>
+          </article>
+
+          <article class="mt-card mt-kpi">
+            <div class="mt-kpi-label">Conversion</div>
+            <div class="mt-kpi-value">6.42%</div>
+            <div class="mt-kpi-meta"><span class="mt-badge" data-intent="positive">+1.1%</span> checkout</div>
+          </article>
+
+          <article class="mt-card mt-chart-card">
+            <div class="mt-card-header">
+              <div>
+                <h2 class="mt-card-title">Revenue Probability Trend</h2>
+                <p class="mt-card-subtitle">TradingView-style time series surface</p>
+              </div>
+              <span class="mt-badge" data-intent="positive">84% on target</span>
+            </div>
+            <div class="mt-chart-toolbar">
+              <div class="mt-segmented" role="group" aria-label="Series">
+                <button class="mt-segment" data-active="true">Revenue</button>
+                <button class="mt-segment">Orders</button>
+                <button class="mt-segment">CPU</button>
+              </div>
+              <span class="mt-muted" style="font-size:11px;font-weight:700;">Auto refresh 10s</span>
+            </div>
+            <canvas class="mt-chart-canvas" id="chart"></canvas>
+          </article>
+
+          <article class="mt-card mt-market-list">
+            <div class="mt-card-header">
+              <div>
+                <h2 class="mt-card-title">Signals</h2>
+                <p class="mt-card-subtitle">Compact market-card layout</p>
+              </div>
+            </div>
+            <div class="mt-market-row">
+              <div class="mt-market-icon">R</div>
+              <div>
+                <div class="mt-market-title">Revenue beats daily target</div>
+                <div class="mt-market-meta">$128.4K volume</div>
+              </div>
+              <div class="mt-probability">84%</div>
+            </div>
+            <div class="mt-market-row">
+              <div class="mt-market-icon">S</div>
+              <div>
+                <div class="mt-market-title">Search latency remains under 120ms</div>
+                <div class="mt-market-meta">p95 observed</div>
+              </div>
+              <div class="mt-probability">71%</div>
+            </div>
+            <div class="mt-market-row">
+              <div class="mt-market-icon">C</div>
+              <div>
+                <div class="mt-market-title">Checkout conversion above 6%</div>
+                <div class="mt-market-meta">last 24 hours</div>
+              </div>
+              <div class="mt-probability">62%</div>
+            </div>
+            <div class="mt-market-row">
+              <div class="mt-market-icon">E</div>
+              <div>
+                <div class="mt-market-title">Error budget burn stays normal</div>
+                <div class="mt-market-meta">api-gateway</div>
+              </div>
+              <div class="mt-probability">93%</div>
+            </div>
+          </article>
+
+          <article class="mt-card mt-span-12">
+            <div class="mt-card-header">
+              <div>
+                <h2 class="mt-card-title">Recent Events</h2>
+                <p class="mt-card-subtitle">Dense table, low chrome, hover-focused</p>
+              </div>
+            </div>
+            <table class="mt-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Source</th>
+                  <th>Metric</th>
+                  <th>Status</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>09:41</td>
+                  <td>stripe-prod</td>
+                  <td>gross revenue</td>
+                  <td><span class="mt-positive">healthy</span></td>
+                  <td>$14.8K</td>
+                </tr>
+                <tr>
+                  <td>09:39</td>
+                  <td>api-gateway</td>
+                  <td>p95 latency</td>
+                  <td><span class="mt-positive">normal</span></td>
+                  <td>82ms</td>
+                </tr>
+                <tr>
+                  <td>09:36</td>
+                  <td>checkout</td>
+                  <td>error rate</td>
+                  <td><span class="mt-negative">watch</span></td>
+                  <td>0.34%</td>
+                </tr>
+              </tbody>
+            </table>
+          </article>
+        </section>
+      </main>
+
+      <aside class="mt-inspector">
+        <div class="mt-config-section">
+          <h2 class="mt-config-title">Panel</h2>
+          <label class="mt-field">
+            <span class="mt-label">Title</span>
+            <input class="mt-input" value="Revenue Probability Trend" />
+          </label>
+          <label class="mt-field">
+            <span class="mt-label">Renderer</span>
+            <input class="mt-input" value="lightweight-timeseries" />
+          </label>
+        </div>
+
+        <div class="mt-config-section">
+          <h2 class="mt-config-title">Theme Colors</h2>
+          <div class="mt-swatch-row">
+            <span class="mt-swatch" style="--swatch:#1652f0"></span>
+            <span class="mt-swatch" style="--swatch:#00b955"></span>
+            <span class="mt-swatch" style="--swatch:#e64800"></span>
+            <span class="mt-swatch" style="--swatch:#858a98"></span>
+            <span class="mt-swatch" style="--swatch:#e0e0e0"></span>
+          </div>
+        </div>
+
+        <div class="mt-config-section">
+          <h2 class="mt-config-title">ChartSpec</h2>
+          <pre class="mt-card" style="padding:12px;overflow:auto;font-size:11px;line-height:16px;color:var(--mt-text-muted);">{
+  "renderer": "lightweight-timeseries",
+  "encoding": {
+    "x": "timestamp",
+    "y": "value"
+  },
+  "interactions": {
+    "crosshair": true,
+    "zoom": true
+  }
+}</pre>
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("chart");
+      const ctx = canvas.getContext("2d");
+
+      function drawChart() {
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(rect.width * dpr);
+        canvas.height = Math.floor(rect.height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const width = rect.width;
+        const height = rect.height;
+        const padding = { top: 18, right: 54, bottom: 30, left: 12 };
+        const plotW = width - padding.left - padding.right;
+        const plotH = height - padding.top - padding.bottom;
+        const css = getComputedStyle(document.documentElement);
+        const grid = css.getPropertyValue("--mt-grid").trim();
+        const axis = css.getPropertyValue("--mt-axis").trim();
+        const primary = css.getPropertyValue("--mt-primary").trim();
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = grid;
+        ctx.fillStyle = axis;
+        ctx.font = "700 11px Inter, system-ui, sans-serif";
+
+        for (let i = 0; i <= 4; i++) {
+          const y = padding.top + (plotH / 4) * i;
+          ctx.beginPath();
+          ctx.moveTo(padding.left, y);
+          ctx.lineTo(width - padding.right, y);
+          ctx.stroke();
+          const label = `${Math.round(100 - i * 20)}%`;
+          ctx.fillText(label, width - padding.right + 12, y + 4);
+        }
+
+        const points = Array.from({ length: 96 }, (_, i) => {
+          const base = 0.56 + i / 96 * 0.22;
+          const wave = Math.sin(i / 5) * 0.045 + Math.cos(i / 11) * 0.026;
+          const jump = i > 68 ? 0.08 : 0;
+          return Math.max(0.2, Math.min(0.94, base + wave + jump));
+        });
+
+        const x = (i) => padding.left + (i / (points.length - 1)) * plotW;
+        const y = (v) => padding.top + (1 - v) * plotH;
+
+        const gradient = ctx.createLinearGradient(0, padding.top, 0, padding.top + plotH);
+        gradient.addColorStop(0, "rgba(22, 82, 240, 0.16)");
+        gradient.addColorStop(1, "rgba(22, 82, 240, 0)");
+
+        ctx.beginPath();
+        points.forEach((p, i) => {
+          if (i === 0) ctx.moveTo(x(i), y(p));
+          else ctx.lineTo(x(i), y(p));
+        });
+        ctx.lineTo(x(points.length - 1), padding.top + plotH);
+        ctx.lineTo(x(0), padding.top + plotH);
+        ctx.closePath();
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        ctx.beginPath();
+        points.forEach((p, i) => {
+          if (i === 0) ctx.moveTo(x(i), y(p));
+          else ctx.lineTo(x(i), y(p));
+        });
+        ctx.strokeStyle = primary;
+        ctx.lineWidth = 2;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.stroke();
+
+        const lastX = x(points.length - 1);
+        const lastY = y(points[points.length - 1]);
+        ctx.beginPath();
+        ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+        ctx.fillStyle = primary;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+
+        ctx.fillStyle = axis;
+        ["00:00", "06:00", "12:00", "18:00"].forEach((label, i) => {
+          ctx.fillText(label, padding.left + (plotW / 3) * i, height - 10);
+        });
+      }
+
+      drawChart();
+      window.addEventListener("resize", drawChart);
+    </script>
+  </body>
+</html>

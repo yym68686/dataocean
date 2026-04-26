@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.dataocean/design-system/chart-spec.schema.json",
+  "title": "Market Terminal ChartSpec",
+  "type": "object",
+  "required": ["id", "renderer", "query", "encoding"],
+  "properties": {
+    "id": { "type": "string" },
+    "title": { "type": "string" },
+    "renderer": {
+      "type": "string",
+      "enum": ["lightweight-timeseries", "d3-custom", "kpi", "table"]
+    },
+    "query": {
+      "type": "object",
+      "required": ["dataSourceId"],
+      "properties": {
+        "dataSourceId": { "type": "string" },
+        "metric": { "type": "string" },
+        "dimensions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "timeRange": { "type": "string" },
+        "refreshIntervalMs": { "type": "number", "minimum": 0 },
+        "filters": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "encoding": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "string" },
+        "y": { "type": "string" },
+        "color": { "type": "string" },
+        "label": { "type": "string" },
+        "value": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "style": {
+      "type": "object",
+      "properties": {
+        "theme": { "type": "string", "enum": ["light", "dark", "system"] },
+        "seriesStyle": { "type": "string", "enum": ["line", "area", "step", "bar"] },
+        "colorIntent": { "type": "string", "enum": ["primary", "positive", "negative", "neutral"] },
+        "compact": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "interactions": {
+      "type": "object",
+      "properties": {
+        "tooltip": { "type": "boolean" },
+        "crosshair": { "type": "boolean" },
+        "zoom": { "type": "boolean" },
+        "rangeSwitcher": { "type": "boolean" },
+        "linkedFilters": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
