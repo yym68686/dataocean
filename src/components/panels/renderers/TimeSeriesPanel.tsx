@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import {
   AreaSeries,
   ColorType,
   createChart,
   LineSeries,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
+  type MouseEventParams,
   type Time,
 } from "lightweight-charts";
 import type { ChartSpec, QueryRow, ThemeMode } from "../../../domain/types";
@@ -28,12 +30,18 @@ type ChartSeries = {
   data: Array<{ time: Time; value: number }>;
 };
 
+type HoverPriceLine = {
+  series: ISeriesApi<"Line" | "Area">;
+  line: IPriceLine;
+};
+
 const seriesColors = ["#1652f0", "#00a37a", "#f59e0b", "#7c3aed", "#ef4444"];
 
 export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRefs = useRef<Map<string, ISeriesApi<"Line" | "Area">>>(new Map());
+  const hoverPriceLineRef = useRef<HoverPriceLine | null>(null);
   const { result, loading, error } = usePanelQuery(panel);
   const chartSeries = useMemo(() => createChartSeries(result?.rows ?? [], panel.title), [panel.title, result]);
 
@@ -68,7 +76,33 @@ export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
     });
     resizeObserver.observe(containerRef.current);
 
+    const handleCrosshairMove = (param: MouseEventParams<Time>) => {
+      if (!param.point) {
+        clearHoverPriceLine(hoverPriceLineRef);
+        return;
+      }
+
+      const hoveredSeries = param.hoveredInfo?.series ?? param.hoveredSeries;
+      const targetSeries = resolveHoverSeries(chart, hoveredSeries, param, seriesRefs.current);
+      if (!targetSeries) {
+        clearHoverPriceLine(hoverPriceLineRef);
+        return;
+      }
+
+      const value = getSeriesDataValue(param.seriesData.get(targetSeries));
+      if (value === undefined) {
+        clearHoverPriceLine(hoverPriceLineRef);
+        return;
+      }
+
+      showHoverPriceLine(hoverPriceLineRef, targetSeries, value, getSeriesColor(targetSeries, seriesRefs.current));
+    };
+
+    chart.subscribeCrosshairMove(handleCrosshairMove);
+
     return () => {
+      chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      clearHoverPriceLine(hoverPriceLineRef);
       resizeObserver.disconnect();
       chart.remove();
       chartRef.current = null;
@@ -206,8 +240,138 @@ function getSeriesDisplayOptions(series: ChartSeries, seriesCount: number) {
     lineVisible: !isSinglePoint,
     pointMarkersVisible: isSinglePoint,
     pointMarkersRadius: 4,
-    lastValueVisible: isTotal,
+    lastValueVisible: false,
   };
+}
+
+function resolveHoverSeries(
+  chart: IChartApi,
+  hoveredSeries: unknown,
+  param: MouseEventParams<Time>,
+  seriesRefs: Map<string, ISeriesApi<"Line" | "Area">>,
+) {
+  if (hoveredSeries && isPanelSeries(hoveredSeries, seriesRefs)) {
+    return hoveredSeries;
+  }
+
+  const nearestSeries = findNearestSeriesPoint(chart, param, seriesRefs);
+  if (nearestSeries) {
+    return nearestSeries;
+  }
+
+  const totalSeries = seriesRefs.get("Total");
+  if (totalSeries && param.seriesData.has(totalSeries)) {
+    return totalSeries;
+  }
+
+  for (const series of seriesRefs.values()) {
+    if (param.seriesData.has(series)) {
+      return series;
+    }
+  }
+
+  return undefined;
+}
+
+function findNearestSeriesPoint(
+  chart: IChartApi,
+  param: MouseEventParams<Time>,
+  seriesRefs: Map<string, ISeriesApi<"Line" | "Area">>,
+) {
+  if (!param.point || param.time === undefined) {
+    return undefined;
+  }
+
+  const x = chart.timeScale().timeToCoordinate(param.time);
+  if (x === null) {
+    return undefined;
+  }
+
+  let nearest: { series: ISeriesApi<"Line" | "Area">; distance: number } | undefined;
+  for (const series of seriesRefs.values()) {
+    const value = getSeriesDataValue(param.seriesData.get(series));
+    if (value === undefined) {
+      continue;
+    }
+
+    const y = series.priceToCoordinate(value);
+    if (y === null) {
+      continue;
+    }
+
+    const distance = Math.hypot(Number(x) - param.point.x, Number(y) - param.point.y);
+    if (!nearest || distance < nearest.distance) {
+      nearest = { series, distance };
+    }
+  }
+
+  return nearest && nearest.distance <= 12 ? nearest.series : undefined;
+}
+
+function showHoverPriceLine(
+  hoverPriceLineRef: MutableRefObject<HoverPriceLine | null>,
+  series: ISeriesApi<"Line" | "Area">,
+  value: number,
+  color: string,
+) {
+  if (hoverPriceLineRef.current?.series !== series) {
+    clearHoverPriceLine(hoverPriceLineRef);
+    hoverPriceLineRef.current = {
+      series,
+      line: series.createPriceLine({
+        price: value,
+        color,
+        lineWidth: 1,
+        lineVisible: false,
+        axisLabelVisible: true,
+        axisLabelColor: color,
+        axisLabelTextColor: "#ffffff",
+        title: "",
+      }),
+    };
+    return;
+  }
+
+  hoverPriceLineRef.current.line.applyOptions({
+    price: value,
+    color,
+    axisLabelColor: color,
+    axisLabelTextColor: "#ffffff",
+    lineVisible: false,
+    axisLabelVisible: true,
+  });
+}
+
+function clearHoverPriceLine(hoverPriceLineRef: MutableRefObject<HoverPriceLine | null>) {
+  if (!hoverPriceLineRef.current) {
+    return;
+  }
+
+  hoverPriceLineRef.current.series.removePriceLine(hoverPriceLineRef.current.line);
+  hoverPriceLineRef.current = null;
+}
+
+function isPanelSeries(value: unknown, seriesRefs: Map<string, ISeriesApi<"Line" | "Area">>): value is ISeriesApi<"Line" | "Area"> {
+  for (const series of seriesRefs.values()) {
+    if (series === value) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getSeriesDataValue(data: unknown) {
+  if (!data || typeof data !== "object" || !("value" in data)) {
+    return undefined;
+  }
+
+  const value = Number((data as { value?: unknown }).value);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function getSeriesColor(series: ISeriesApi<"Line" | "Area">, seriesRefs: Map<string, ISeriesApi<"Line" | "Area">>) {
+  const index = Array.from(seriesRefs.values()).indexOf(series);
+  return seriesColors[Math.max(index, 0) % seriesColors.length];
 }
 
 function getLatestValue(series: ChartSeries[], fallback?: string | number | boolean) {
