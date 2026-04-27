@@ -17,6 +17,7 @@ tokens that can be adapted to your product.
 - `spec/chart-spec.schema.json` - JSON schema for dashboard chart configs.
 - `preview/index.html` - static local preview.
 - `research/polymarket-style-notes.md` - extraction notes and design rules.
+- `research/polymarket-dark-theme.md` - dark-theme summary and implementation rules.
 
 ## Visual Direction
 
@@ -27,6 +28,38 @@ tokens that can be adapted to your product.
 - Green and orange-red are reserved for directional states.
 - Charts use transparent backgrounds, weak grid lines, right-side value axes,
   compact labels, and minimal decoration.
+
+## Dark Theme
+
+The dark theme is a restrained navy-gray financial terminal theme, not a neon
+analytics dashboard.
+
+Core dark tokens:
+
+```text
+page              #172330
+surface           #1d2b39
+surfaceMuted      #2c3f4f
+surfaceRaised     #233444
+text              #ffffff
+textMuted         #858d92
+border            #344452
+axis              #899cb2
+primary chart     #2d9cdb
+positive          #00b955
+negative          #e64800
+```
+
+Rules:
+
+- Use borders and surface contrast instead of heavy shadows.
+- Avoid pure black backgrounds.
+- Keep chart grids weak and chart backgrounds transparent.
+- Use `#2d9cdb` as the main dark-mode time-series line.
+- Keep green/red reserved for directional state.
+- Avoid neon glows, large gradients, and sci-fi dashboard styling.
+
+Full notes: `research/polymarket-dark-theme.md`.
 
 ## Recommended Stack
 

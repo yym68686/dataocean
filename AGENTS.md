@@ -12,14 +12,20 @@ light-first, dense, clean, low-decoration, data-prioritized, and fast.
 
 ## Current Local Assets
 
-- `package.json` - Vite/React/TypeScript app scripts and dependencies.
+- `package.json` - Vite/React/TypeScript build plus Node API start script.
+- `Dockerfile` - builds the React app and runs the Node API/static server.
+- `docker-compose.yml` - production-like `dataocean + postgres` topology.
 - `index.html` - Vite app entry.
 - `src/` - current React MVP implementation.
+- `src/api/client.ts` - browser API client for auth and app state.
 - `src/domain/types.ts` - core DataSource, Metric, ChartSpec, Dashboard, QueryResult types.
-- `src/data/seed.ts` - seeded demo data sources, metrics, dashboard panels, alerts, and templates.
-- `src/services/connectors.ts` - mock connector interface/implementation for API, SQL, Prometheus, Stripe, webhook, CSV.
+- `src/data/seed.ts` - bootstrap source/metric/panel definitions; do not add fake business values here.
+- `src/services/connectors.ts` - connector interface/registry; connectors must not synthesize fake query data.
 - `src/services/queryEngine.ts` - panel query execution and short-lived cache.
 - `src/components/panels/` - renderer split for KPI, Lightweight Charts time series, status card, signal list, and table.
+- `server/` - Node/Express API for auth, API keys, app state CRUD, and PostgreSQL persistence.
+- `server/zhupay.js` - Zhupay V2 RSA connector, callback verification, sync, and query mapping.
+- `server/creem.js` - Creem API-key connector, HMAC webhook verification, scheduled sync, and query mapping.
 - `design-system/README.md` - design system overview and usage.
 - `design-system/css/market-system.css` - CSS variables and reusable component classes.
 - `design-system/tokens/market.tokens.json` - source design tokens.
@@ -43,6 +49,9 @@ Style:
 - Positive is `#00b955`; negative/orange-red is `#e64800`.
 - Neutral text is gray-blue, around `#858a98`.
 - Prefer one or two data colors per chart. Avoid rainbow palettes.
+- Dark theme is navy-gray and restrained: `#172330` page, `#1d2b39`
+  surface, `#344452` borders/grid, `#899cb2` axis text, and `#2d9cdb`
+  primary chart line. See `design-system/research/polymarket-dark-theme.md`.
 
 Avoid:
 
@@ -97,6 +106,37 @@ the target.
 
 ## Architecture Direction
 
+Current deployed stack:
+
+```text
+React / Vite
+Node / Express
+PostgreSQL
+Market Terminal Design System
+TradingView Lightweight Charts
+```
+
+Current API behavior:
+
+- Email/password login, no verification code.
+- First registered user automatically becomes `admin`; later users become `member`.
+- Every user has an API key. Admin API keys can mutate state; member API keys are read-oriented.
+- Admin-only UI lives under the separate sidebar Admin group. `AdminUsersPage`
+  lists users and can delete non-current users through `DELETE /api/admin/users/:userId`.
+- PostgreSQL stores `users`, `sessions`, `app_state`, and `audit_logs`.
+- PostgreSQL also stores real Zhupay snapshots/orders and Creem snapshots/transactions/customers/subscriptions.
+- App state contains data sources, metrics, dashboards, panels, alerts, and templates.
+- Use `Authorization: Bearer <session-token-or-api-key>` or `X-API-Key`.
+- Zhupay credentials must be provided as environment variables: `ZHUPAY_PID`,
+  `ZHUPAY_MERCHANT_PRIVATE_KEY`, and `ZHUPAY_PLATFORM_PUBLIC_KEY`.
+- Zhupay can run without touching the payment app by enabling scheduled sync:
+  `ZHUPAY_SYNC_ENABLED=true`, `ZHUPAY_SYNC_INTERVAL_MS=60000`,
+  `ZHUPAY_SYNC_MAX_PAGES=4`, and `ZHUPAY_SYNC_LIMIT=50`.
+- Creem credentials must be provided as environment variables: `CREEM_API_KEY`
+  and optionally `CREEM_WEBHOOK_SECRET`. Creem scheduled sync uses
+  `CREEM_SYNC_ENABLED=true`, `CREEM_SYNC_INTERVAL_MS=3600000`,
+  `CREEM_SYNC_MAX_PAGES=4`, and `CREEM_SYNC_PAGE_SIZE=50`.
+
 Long-term intended stack:
 
 ```text
@@ -138,10 +178,15 @@ When extending this project:
 
 ## Current State
 
-This is now a runnable React/Vite MVP. It implements the first product loop:
-seeded data sources, semantic metrics, ChartSpec-backed dashboard panels, mock
-connector execution, auto-refreshing panel queries, and a Polymarket-inspired UI.
+This is now a runnable full-stack MVP. It implements the first product loop:
+email/password auth, admin-first bootstrap, per-user API keys, PostgreSQL-backed
+dashboard state, semantic metrics, ChartSpec-backed panels, auto-refreshing panel
+queries, and a Polymarket-inspired UI.
 
-The next implementation step should be to replace the mock connector layer with
-real Custom REST API execution, add persisted dashboard storage, and introduce a
-backend API for credentials, query execution, and team-level access control.
+The app intentionally contains no fake business/ops values. Zhupay and Creem
+source, metric, and panel definitions may be present, but values must come from
+the real provider APIs or verified callbacks/webhooks.
+
+The next implementation step should be to add real Custom REST API execution,
+encrypted credential storage, and server-side query execution with caching and
+team-level access control.

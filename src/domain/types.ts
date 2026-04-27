@@ -7,6 +7,7 @@ export type AppSection =
   | "metrics"
   | "alerts"
   | "templates"
+  | "admin-users"
   | "settings";
 
 export type DataSourceKind =
@@ -14,6 +15,8 @@ export type DataSourceKind =
   | "postgres"
   | "prometheus"
   | "stripe"
+  | "zhupay"
+  | "creem"
   | "webhook"
   | "csv";
 
@@ -39,7 +42,7 @@ export interface DataSource {
   status: DataSourceStatus;
   description: string;
   endpoint: string;
-  auth: "none" | "api-key" | "bearer" | "basic" | "oauth";
+  auth: "none" | "api-key" | "bearer" | "basic" | "oauth" | "rsa";
   refreshIntervalMs: number;
   lastSyncAt: string;
   owner: string;
@@ -133,6 +136,7 @@ export interface QueryColumn {
   label: string;
   type: "string" | "number" | "time" | "boolean";
   format?: MetricFormat;
+  unit?: string;
 }
 
 export interface QueryRow {
@@ -174,4 +178,24 @@ export interface ConnectorTestResult {
   ok: boolean;
   latencyMs: number;
   message: string;
+}
+
+export interface AppData {
+  dataSources: DataSource[];
+  metrics: MetricDefinition[];
+  dashboard: Dashboard;
+  dashboards?: Dashboard[];
+  alerts: AlertRule[];
+  templates: DashboardTemplate[];
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  role: "admin" | "member";
+  apiKeyPrefix: string;
+  apiKeyScope: "admin" | "user";
+  createdAt: string;
+  updatedAt: string;
 }

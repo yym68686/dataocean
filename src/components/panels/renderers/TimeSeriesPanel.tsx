@@ -8,7 +8,7 @@ import {
   type ISeriesApi,
   type Time,
 } from "lightweight-charts";
-import type { ChartSpec } from "../../../domain/types";
+import type { ChartSpec, ThemeMode } from "../../../domain/types";
 import { timeRanges } from "../../../domain/constants";
 import { formatDelta, formatMetricValue } from "../../../lib/format";
 import { usePanelQuery } from "../../../hooks/usePanelQuery";
@@ -20,15 +20,14 @@ import {
 
 type TimeSeriesPanelProps = {
   panel: ChartSpec;
+  theme: ThemeMode;
 };
 
-export function TimeSeriesPanel({ panel }: TimeSeriesPanelProps) {
+export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Line" | "Area"> | null>(null);
   const { result, loading, error } = usePanelQuery(panel);
-  const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-
   const chartData = useMemo(
     () =>
       result?.rows.map((row) => ({
@@ -38,8 +37,11 @@ export function TimeSeriesPanel({ panel }: TimeSeriesPanelProps) {
     [result],
   );
 
-  const latest = Number(result?.rows.at(-1)?.value ?? 0);
-  const delta = formatDelta(latest, result?.meta.previousValue, result?.meta.metric.format);
+  const hasValue = Boolean(result?.rows.length);
+  const latest = Number(hasValue ? result?.rows.at(-1)?.value : 0);
+  const delta = hasValue
+    ? formatDelta(latest, result?.meta.previousValue, result?.meta.metric.format)
+    : { intent: "neutral" as const, label: "waiting" };
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -94,7 +96,7 @@ export function TimeSeriesPanel({ panel }: TimeSeriesPanelProps) {
           <p className="mt-card-subtitle">{panel.description}</p>
         </div>
         <div className="do-chart-readout">
-          <span>{result ? formatMetricValue(latest, result.meta.metric.format, result.meta.unit) : "--"}</span>
+          <span>{hasValue && result ? formatMetricValue(latest, result.meta.metric.format, result.meta.unit) : "--"}</span>
           <span className="mt-badge" data-intent={delta.intent === "neutral" ? undefined : delta.intent}>
             {delta.label}
           </span>

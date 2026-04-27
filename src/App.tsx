@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
+import { apiClient, clearStoredToken, getStoredToken, setStoredToken, type AuthResponse } from "./api/client";
 import { alerts, dashboard, dataSources, metrics, templates } from "./data/seed";
 import { sectionLabels, timeRanges } from "./domain/constants";
-import type { AppSection, ChartSpec, ThemeMode, TimeRange } from "./domain/types";
+import type { AppData, AppSection, AuthUser, ThemeMode, TimeRange } from "./domain/types";
 import { AlertsPage } from "./pages/AlertsPage";
+import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DataSourcesPage } from "./pages/DataSourcesPage";
+import { LoginPage } from "./pages/LoginPage";
 import { MetricsPage } from "./pages/MetricsPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { Inspector } from "./components/Inspector";
+import { setQueryCatalog } from "./services/queryEngine";
 
 const sections: AppSection[] = [
   "command",
@@ -20,22 +24,160 @@ const sections: AppSection[] = [
   "settings",
 ];
 
+const adminSections: AppSection[] = ["admin-users"];
+
+const fallbackAppData: AppData = {
+  dataSources,
+  metrics,
+  dashboard,
+  dashboards: [dashboard],
+  alerts,
+  templates,
+};
+
 export default function App() {
   const [activeSection, setActiveSection] = useState<AppSection>("command");
-  const [theme, setTheme] = useState<ThemeMode>("light");
-  const [activeRange, setActiveRange] = useState<TimeRange>(dashboard.defaultTimeRange);
-  const [selectedPanelId, setSelectedPanelId] = useState(dashboard.panels[4]?.id ?? dashboard.panels[0]?.id);
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const stored = window.localStorage.getItem("dataocean-theme");
+    if (stored === "light" || stored === "dark") {
+      return stored;
+    }
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+  const [authUser, setAuthUser] = useState<AuthUser | null | undefined>(undefined);
+  const [appData, setAppData] = useState<AppData>(fallbackAppData);
+  const [issuedApiKey, setIssuedApiKey] = useState<string | undefined>();
+  const [appError, setAppError] = useState("");
+  const [activeRange, setActiveRange] = useState<TimeRange>(fallbackAppData.dashboard.defaultTimeRange);
+  const [selectedPanelId, setSelectedPanelId] = useState(
+    fallbackAppData.dashboard.panels[4]?.id ?? fallbackAppData.dashboard.panels[0]?.id,
+  );
 
   const selectedPanel = useMemo(
-    () => dashboard.panels.find((panel) => panel.id === selectedPanelId) ?? dashboard.panels[0],
-    [selectedPanelId],
+    () => appData.dashboard.panels.find((panel) => panel.id === selectedPanelId) ?? appData.dashboard.panels[0],
+    [appData.dashboard.panels, selectedPanelId],
   );
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    window.localStorage.setItem("dataocean-theme", theme);
   }, [theme]);
 
-  const currentTitle = activeSection === "command" ? dashboard.name : sectionLabels[activeSection];
+  useEffect(() => {
+    setQueryCatalog({ dataSources: appData.dataSources, metrics: appData.metrics });
+  }, [appData.dataSources, appData.metrics]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const token = getStoredToken();
+
+    if (!token) {
+      setAuthUser(null);
+      return;
+    }
+
+    async function restoreSession() {
+      try {
+        const [{ user }, state] = await Promise.all([apiClient.me(), apiClient.getState()]);
+        if (!cancelled) {
+          setAuthUser(user);
+          setAppData(state);
+          setActiveRange(state.dashboard.defaultTimeRange);
+          setSelectedPanelId(state.dashboard.panels[4]?.id ?? state.dashboard.panels[0]?.id);
+        }
+      } catch (error) {
+        clearStoredToken();
+        if (!cancelled) {
+          setAuthUser(null);
+          setAppError(error instanceof Error ? error.message : "Could not restore session");
+        }
+      }
+    }
+
+    void restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!appData.dashboard.panels.some((panel) => panel.id === selectedPanelId)) {
+      setSelectedPanelId(appData.dashboard.panels[0]?.id);
+    }
+  }, [appData.dashboard.panels, selectedPanelId]);
+
+  useEffect(() => {
+    if (authUser?.role !== "admin" && adminSections.includes(activeSection)) {
+      setActiveSection("command");
+    }
+  }, [activeSection, authUser]);
+
+  async function loadAppData() {
+    const state = await apiClient.getState();
+    setAppData(state);
+    setActiveRange(state.dashboard.defaultTimeRange);
+    setSelectedPanelId(state.dashboard.panels[4]?.id ?? state.dashboard.panels[0]?.id);
+  }
+
+  async function handleAuthenticated(response: AuthResponse) {
+    setStoredToken(response.token);
+    setAuthUser(response.user);
+    setIssuedApiKey(response.apiKey);
+    setAppError("");
+    await loadAppData();
+  }
+
+  async function handleLogout() {
+    try {
+      await apiClient.logout();
+    } catch {
+      // Local logout should still clear the browser session if the API call fails.
+    }
+    clearStoredToken();
+    setAuthUser(null);
+    setIssuedApiKey(undefined);
+  }
+
+  async function handleRotateApiKey() {
+    try {
+      const result = await apiClient.rotateApiKey();
+      setAuthUser(result.user);
+      setIssuedApiKey(result.apiKey);
+      setAppError("");
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : "Could not rotate API key");
+    }
+  }
+
+  function toggleTheme() {
+    setTheme((value) => (value === "light" ? "dark" : "light"));
+  }
+
+  if (authUser === undefined) {
+    return (
+      <main className="do-auth-shell">
+        <section className="do-auth-panel">
+          <div className="do-auth-brand">
+            <span className="mt-brand-mark" aria-hidden="true" />
+            <div>
+              <h1>DataOcean</h1>
+              <p>Restoring session...</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (authUser === null) {
+    return <LoginPage theme={theme} onThemeChange={toggleTheme} onAuthenticated={(response) => void handleAuthenticated(response)} />;
+  }
+
+  const isAdmin = authUser.role === "admin";
+  const currentTitle = activeSection === "command" ? appData.dashboard.name : sectionLabels[activeSection];
+  const inspectorPanel = activeSection === "command" || activeSection === "dashboards" ? selectedPanel : undefined;
 
   return (
     <div className="mt-app do-app">
@@ -60,10 +202,28 @@ export default function App() {
           ))}
         </nav>
 
+        {isAdmin ? (
+          <nav className="mt-nav do-admin-nav" aria-label="Admin">
+            <div className="do-nav-heading">Admin</div>
+            {adminSections.map((section) => (
+              <button
+                className="mt-nav-item do-nav-button"
+                data-active={activeSection === section}
+                key={section}
+                onClick={() => setActiveSection(section)}
+                type="button"
+              >
+                <span className="mt-dot" />
+                <span>{sectionLabels[section]}</span>
+              </button>
+            ))}
+          </nav>
+        ) : null}
+
         <div className="do-sidebar-card">
           <div className="do-sidebar-card-label">Connected</div>
-          <div className="do-sidebar-card-value">{dataSources.length} sources</div>
-          <div className="do-sidebar-card-meta">API, SQL, Prometheus, Stripe</div>
+          <div className="do-sidebar-card-value">{appData.dataSources.length} sources</div>
+          <div className="do-sidebar-card-meta">{authUser.role} workspace</div>
         </div>
       </aside>
 
@@ -72,7 +232,7 @@ export default function App() {
           <div>
             <div className="do-live-line">
               <span className="do-live-pill">Live</span>
-              <span>Universal data terminal</span>
+              <span>{appError || "Universal data terminal"}</span>
             </div>
             <h1 className="do-page-title">{currentTitle}</h1>
             <p className="mt-card-subtitle">
@@ -81,11 +241,7 @@ export default function App() {
           </div>
 
           <div className="mt-toolbar">
-            <button
-              className="mt-button"
-              onClick={() => setTheme((value) => (value === "light" ? "dark" : "light"))}
-              type="button"
-            >
+            <button className="mt-button" onClick={toggleTheme} type="button">
               {theme === "light" ? "Dark mode" : "Light mode"}
             </button>
             <div className="mt-segmented" role="group" aria-label="Global time range">
@@ -101,32 +257,45 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <button className="mt-button" data-variant="primary" type="button">
-              New panel
-            </button>
+            {isAdmin ? (
+              <button className="mt-button" data-variant="primary" type="button">
+                New panel
+              </button>
+            ) : null}
           </div>
         </header>
 
         {activeSection === "command" || activeSection === "dashboards" ? (
           <DashboardPage
             activeRange={activeRange}
-            dashboard={dashboard}
+            dashboard={appData.dashboard}
+            dataSources={appData.dataSources}
+            metrics={appData.metrics}
             onSelectPanel={setSelectedPanelId}
             selectedPanelId={selectedPanelId}
+            theme={theme}
           />
         ) : null}
-        {activeSection === "datasources" ? <DataSourcesPage dataSources={dataSources} /> : null}
-        {activeSection === "metrics" ? <MetricsPage metrics={metrics} dataSources={dataSources} /> : null}
-        {activeSection === "alerts" ? <AlertsPage alerts={alerts} /> : null}
-        {activeSection === "templates" ? <TemplatesPage templates={templates} /> : null}
-        {activeSection === "settings" ? <SettingsPage /> : null}
+        {activeSection === "datasources" ? <DataSourcesPage dataSources={appData.dataSources} /> : null}
+        {activeSection === "metrics" ? <MetricsPage metrics={appData.metrics} dataSources={appData.dataSources} /> : null}
+        {activeSection === "alerts" ? <AlertsPage alerts={appData.alerts} /> : null}
+        {activeSection === "templates" ? <TemplatesPage templates={appData.templates} /> : null}
+        {activeSection === "admin-users" && isAdmin ? <AdminUsersPage currentUser={authUser} /> : null}
+        {activeSection === "settings" ? (
+          <SettingsPage
+            issuedApiKey={issuedApiKey}
+            onLogout={() => void handleLogout()}
+            onRotateApiKey={() => void handleRotateApiKey()}
+            user={authUser}
+          />
+        ) : null}
       </main>
 
       <Inspector
         activeSection={activeSection}
-        dataSources={dataSources}
-        metrics={metrics}
-        panel={selectedPanel as ChartSpec}
+        dataSources={appData.dataSources}
+        metrics={appData.metrics}
+        panel={inspectorPanel}
       />
     </div>
   );

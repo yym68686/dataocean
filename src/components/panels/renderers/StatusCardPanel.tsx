@@ -1,12 +1,12 @@
-import { dataSources } from "../../../data/seed";
-import type { ChartSpec } from "../../../domain/types";
+import type { ChartSpec, DataSource } from "../../../domain/types";
 import { usePanelQuery } from "../../../hooks/usePanelQuery";
 
 type StatusCardPanelProps = {
   panel: ChartSpec;
+  dataSources: DataSource[];
 };
 
-export function StatusCardPanel({ panel }: StatusCardPanelProps) {
+export function StatusCardPanel({ panel, dataSources }: StatusCardPanelProps) {
   const { result } = usePanelQuery(panel);
 
   return (

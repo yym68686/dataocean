@@ -1,9 +1,17 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Market Terminal Design System Preview</title>
+    <script>
+      (() => {
+        const stored = localStorage.getItem("market-preview-theme");
+        const systemDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+        const theme = stored === "dark" || stored === "light" ? stored : systemDark ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
     <link rel="stylesheet" href="../css/market-system.css" />
   </head>
   <body>
@@ -30,6 +38,7 @@
             <p class="mt-card-subtitle">Unified revenue, infra, and market-style signals</p>
           </div>
           <div class="mt-toolbar">
+            <button class="mt-button" id="themeToggle">Toggle theme</button>
             <div class="mt-segmented" role="group" aria-label="Time range">
               <button class="mt-segment">1H</button>
               <button class="mt-segment" data-active="true">1D</button>
@@ -216,6 +225,7 @@
     <script>
       const canvas = document.getElementById("chart");
       const ctx = canvas.getContext("2d");
+      const themeToggle = document.getElementById("themeToggle");
 
       function drawChart() {
         const rect = canvas.getBoundingClientRect();
@@ -233,6 +243,8 @@
         const grid = css.getPropertyValue("--mt-grid").trim();
         const axis = css.getPropertyValue("--mt-axis").trim();
         const primary = css.getPropertyValue("--mt-primary").trim();
+        const surface = css.getPropertyValue("--mt-surface").trim();
+        const isDark = document.documentElement.dataset.theme === "dark";
 
         ctx.clearRect(0, 0, width, height);
         ctx.lineWidth = 1;
@@ -261,8 +273,8 @@
         const y = (v) => padding.top + (1 - v) * plotH;
 
         const gradient = ctx.createLinearGradient(0, padding.top, 0, padding.top + plotH);
-        gradient.addColorStop(0, "rgba(22, 82, 240, 0.16)");
-        gradient.addColorStop(1, "rgba(22, 82, 240, 0)");
+        gradient.addColorStop(0, isDark ? "rgba(45, 156, 219, 0.22)" : "rgba(22, 82, 240, 0.16)");
+        gradient.addColorStop(1, isDark ? "rgba(45, 156, 219, 0)" : "rgba(22, 82, 240, 0)");
 
         ctx.beginPath();
         points.forEach((p, i) => {
@@ -293,7 +305,7 @@
         ctx.fillStyle = primary;
         ctx.fill();
         ctx.lineWidth = 2;
-        ctx.strokeStyle = "#ffffff";
+        ctx.strokeStyle = surface;
         ctx.stroke();
 
         ctx.fillStyle = axis;
@@ -303,6 +315,12 @@
       }
 
       drawChart();
+      themeToggle.addEventListener("click", () => {
+        const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        localStorage.setItem("market-preview-theme", next);
+        drawChart();
+      });
       window.addEventListener("resize", drawChart);
     </script>
   </body>

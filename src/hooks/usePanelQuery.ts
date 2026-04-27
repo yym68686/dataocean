@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChartSpec, QueryResult } from "../domain/types";
-import { queryEngine } from "../services/queryEngine";
+import { apiClient } from "../api/client";
 
 type QueryState = {
   result?: QueryResult;
@@ -20,7 +20,7 @@ export function usePanelQuery(panel: ChartSpec) {
     async function run() {
       try {
         setState((current) => ({ ...current, loading: !current.result }));
-        const result = await queryEngine.executePanel(panel);
+        const result = await apiClient.executePanel(panel);
         if (!cancelled) {
           setState({ result, loading: false });
         }

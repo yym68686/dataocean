@@ -21,6 +21,9 @@ Observed design signals:
 - Chart pattern: transparent background, weak horizontal grid, hidden vertical
   grid, right-side price/value axis, no loud chart chrome.
 
+See `polymarket-dark-theme.md` for the full dark-theme summary, including
+surface hierarchy, chart colors, control behavior, and state-color rules.
+
 ## Interpretation
 
 The important part is not a specific CSS file. The product feel comes from:

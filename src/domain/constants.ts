@@ -1,4 +1,4 @@
-import type { TimeRange } from "./types";
+import type { AppSection, TimeRange } from "./types";
 
 export const timeRanges: Array<{ label: string; value: TimeRange }> = [
   { label: "1H", value: "1h" },
@@ -8,12 +8,13 @@ export const timeRanges: Array<{ label: string; value: TimeRange }> = [
   { label: "ALL", value: "all" },
 ];
 
-export const sectionLabels = {
+export const sectionLabels: Record<AppSection, string> = {
   command: "Command Center",
   dashboards: "Dashboards",
   datasources: "Data Sources",
   metrics: "Metrics",
   alerts: "Alerts",
   templates: "Templates",
+  "admin-users": "Users",
   settings: "Settings",
-} as const;
+};

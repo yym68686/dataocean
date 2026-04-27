@@ -20,9 +20,11 @@
   --mt-negative-soft: #fff0ea;
   --mt-neutral: #858a98;
   --mt-warning: #f59e0b;
+  --mt-primary-contrast: #ffffff;
   --mt-shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04);
   --mt-shadow-popover: 0 16px 40px rgba(16, 24, 40, 0.14);
   --mt-focus: 0 0 0 3px rgba(22, 82, 240, 0.16);
+  color-scheme: light;
 }
 
 [data-theme="dark"] {
@@ -46,6 +48,11 @@
   --mt-negative-soft: #4a2519;
   --mt-neutral: #858d92;
   --mt-warning: #f59e0b;
+  --mt-primary-contrast: #061722;
+  --mt-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.16);
+  --mt-shadow-popover: 0 18px 48px rgba(0, 0, 0, 0.34);
+  --mt-focus: 0 0 0 3px rgba(45, 156, 219, 0.22);
+  color-scheme: dark;
 }
 
 * {
@@ -131,7 +138,7 @@ textarea {
   height: 28px;
   border-radius: 7px;
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--mt-primary) 92%, white), var(--mt-primary-hover));
+    linear-gradient(135deg, color-mix(in srgb, var(--mt-primary) 92%, var(--mt-surface)), var(--mt-primary-hover));
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 
@@ -216,7 +223,7 @@ textarea {
 
 .mt-button[data-variant="primary"] {
   background: var(--mt-primary);
-  color: #ffffff;
+  color: var(--mt-primary-contrast);
 }
 
 .mt-button[data-variant="primary"]:hover {
@@ -269,6 +276,14 @@ textarea {
   color: var(--mt-text);
   padding: 0 10px;
   font-size: 13px;
+}
+
+.mt-input::placeholder {
+  color: var(--mt-text-subtle);
+}
+
+.mt-input[readonly] {
+  color: var(--mt-text-muted);
 }
 
 .mt-grid {

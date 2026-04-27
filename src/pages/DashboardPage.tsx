@@ -1,15 +1,25 @@
-import { dataSources, metrics } from "../data/seed";
-import type { Dashboard, TimeRange } from "../domain/types";
+import type { Dashboard, DataSource, MetricDefinition, ThemeMode, TimeRange } from "../domain/types";
 import { PanelRenderer } from "../components/panels/PanelRenderer";
 
 type DashboardPageProps = {
   dashboard: Dashboard;
+  dataSources: DataSource[];
+  metrics: MetricDefinition[];
   activeRange: TimeRange;
   selectedPanelId?: string;
+  theme: ThemeMode;
   onSelectPanel: (panelId: string) => void;
 };
 
-export function DashboardPage({ dashboard, activeRange, selectedPanelId, onSelectPanel }: DashboardPageProps) {
+export function DashboardPage({
+  dashboard,
+  dataSources,
+  metrics,
+  activeRange,
+  selectedPanelId,
+  theme,
+  onSelectPanel,
+}: DashboardPageProps) {
   const liveSources = dataSources.filter((source) => source.status === "live").length;
 
   return (
@@ -37,14 +47,22 @@ export function DashboardPage({ dashboard, activeRange, selectedPanelId, onSelec
         {dashboard.panels.map((panel) => (
           <PanelRenderer
             key={panel.id}
+            dataSources={dataSources}
             panel={{
               ...panel,
               query: { ...panel.query, timeRange: activeRange },
             }}
             selected={selectedPanelId === panel.id}
             onSelect={() => onSelectPanel(panel.id)}
+            theme={theme}
           />
         ))}
+        {dashboard.panels.length === 0 ? (
+          <article className="mt-card mt-span-12 do-empty-state">
+            <h2>No real panels configured</h2>
+            <p>Connect a real data source, define metrics, then add ChartSpec panels.</p>
+          </article>
+        ) : null}
       </section>
     </>
   );

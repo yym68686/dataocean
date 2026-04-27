@@ -8,9 +8,12 @@ type KpiPanelProps = {
 
 export function KpiPanel({ panel }: KpiPanelProps) {
   const { result, loading, error } = usePanelQuery(panel);
-  const latest = Number(result?.rows.at(-1)?.value ?? 0);
-  const delta = formatDelta(latest, result?.meta.previousValue, result?.meta.metric.format);
-  const value = result ? formatMetricValue(latest, result.meta.metric.format, result.meta.unit) : "--";
+  const hasValue = Boolean(result?.rows.length);
+  const latest = Number(hasValue ? result?.rows.at(-1)?.value : 0);
+  const delta = hasValue
+    ? formatDelta(latest, result?.meta.previousValue, result?.meta.metric.format)
+    : { intent: "neutral" as const, label: "waiting" };
+  const value = hasValue && result ? formatMetricValue(latest, result.meta.metric.format, result.meta.unit) : "--";
 
   return (
     <div className="do-kpi-panel">

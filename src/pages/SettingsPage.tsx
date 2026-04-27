@@ -1,26 +1,47 @@
-export function SettingsPage() {
+import type { AuthUser } from "../domain/types";
+
+type SettingsPageProps = {
+  user: AuthUser;
+  issuedApiKey?: string;
+  onLogout: () => void;
+  onRotateApiKey: () => void;
+};
+
+export function SettingsPage({ user, issuedApiKey, onLogout, onRotateApiKey }: SettingsPageProps) {
   return (
     <section className="mt-grid">
       <article className="mt-card mt-span-6">
         <div className="mt-card-header">
           <div>
-            <h2 className="mt-card-title">Team</h2>
-            <p className="mt-card-subtitle">Access control and workspace defaults.</p>
+            <h2 className="mt-card-title">Account</h2>
+            <p className="mt-card-subtitle">Session, role, and API access.</p>
           </div>
+          <button className="mt-button" onClick={onLogout} type="button">
+            Sign out
+          </button>
         </div>
         <div className="mt-card-body do-settings-stack">
           <label className="mt-field">
-            <span className="mt-label">Workspace name</span>
-            <input className="mt-input" defaultValue="DataOcean Core" />
+            <span className="mt-label">Email</span>
+            <input className="mt-input" readOnly value={user.email} />
           </label>
           <label className="mt-field">
-            <span className="mt-label">Default time range</span>
-            <input className="mt-input" defaultValue="1D" />
+            <span className="mt-label">Role</span>
+            <input className="mt-input" readOnly value={`${user.role} / ${user.apiKeyScope} api key`} />
           </label>
           <label className="mt-field">
-            <span className="mt-label">Default refresh</span>
-            <input className="mt-input" defaultValue="10 seconds" />
+            <span className="mt-label">API key prefix</span>
+            <input className="mt-input" readOnly value={`${user.apiKeyPrefix}...`} />
           </label>
+          {issuedApiKey ? (
+            <label className="mt-field">
+              <span className="mt-label">New API key</span>
+              <input className="mt-input" readOnly value={issuedApiKey} />
+            </label>
+          ) : null}
+          <button className="mt-button" onClick={onRotateApiKey} type="button">
+            Rotate API key
+          </button>
         </div>
       </article>
 

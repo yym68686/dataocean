@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiClient } from "../api/client";
 import type { DataSource } from "../domain/types";
 import { queryEngine } from "../services/queryEngine";
 
@@ -11,6 +12,28 @@ export function DataSourcesPage({ dataSources }: DataSourcesPageProps) {
 
   async function testSource(source: DataSource) {
     setTestResults((current) => ({ ...current, [source.id]: "Testing..." }));
+    if (source.kind === "zhupay") {
+      const status = await apiClient.getZhupayStatus();
+      setTestResults((current) => ({
+        ...current,
+        [source.id]: status.configured
+          ? `Zhupay configured · ${status.orderCount} orders cached`
+          : "Zhupay credentials are not configured",
+      }));
+      return;
+    }
+
+    if (source.kind === "creem") {
+      const status = await apiClient.getCreemStatus();
+      setTestResults((current) => ({
+        ...current,
+        [source.id]: status.configured
+          ? `Creem ${status.mode} configured · ${status.transactionCount} transactions cached`
+          : "Creem API key is not configured",
+      }));
+      return;
+    }
+
     const result = await queryEngine.testDataSource(source);
     setTestResults((current) => ({
       ...current,
@@ -31,6 +54,12 @@ export function DataSourcesPage({ dataSources }: DataSourcesPageProps) {
           </button>
         </div>
         <div className="do-source-grid">
+          {dataSources.length === 0 ? (
+            <div className="do-empty-state do-source-empty">
+              <h2>No real data sources</h2>
+              <p>Waiting for a real API, database, webhook, or metrics system to be connected.</p>
+            </div>
+          ) : null}
           {dataSources.map((source) => (
             <div className="do-source-tile" key={source.id}>
               <div className="do-source-header">

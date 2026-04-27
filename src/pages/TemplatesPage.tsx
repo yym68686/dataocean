@@ -7,6 +7,12 @@ type TemplatesPageProps = {
 export function TemplatesPage({ templates }: TemplatesPageProps) {
   return (
     <section className="mt-grid">
+      {templates.length === 0 ? (
+        <article className="mt-card mt-span-12 do-empty-state">
+          <h2>No real templates</h2>
+          <p>Templates will be added only when they are backed by real source and metric definitions.</p>
+        </article>
+      ) : null}
       {templates.map((template) => (
         <article className="mt-card mt-span-6 do-template-card" key={template.id}>
           <div>

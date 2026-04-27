@@ -1,0 +1,49 @@
+services:
+  dataocean:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 80
+      DATABASE_URL: postgres://${POSTGRES_USER:-dataocean}:${POSTGRES_PASSWORD:-dataocean}@postgres:5432/${POSTGRES_DB:-dataocean}
+      ZHUPAY_BASE_URL: ${ZHUPAY_BASE_URL:-https://pay.lxsd.cn}
+      ZHUPAY_PID: ${ZHUPAY_PID:-}
+      ZHUPAY_MERCHANT_PRIVATE_KEY: ${ZHUPAY_MERCHANT_PRIVATE_KEY:-}
+      ZHUPAY_PLATFORM_PUBLIC_KEY: ${ZHUPAY_PLATFORM_PUBLIC_KEY:-}
+      ZHUPAY_SYNC_ENABLED: ${ZHUPAY_SYNC_ENABLED:-false}
+      ZHUPAY_SYNC_INTERVAL_MS: ${ZHUPAY_SYNC_INTERVAL_MS:-60000}
+      ZHUPAY_SYNC_MAX_PAGES: ${ZHUPAY_SYNC_MAX_PAGES:-4}
+      ZHUPAY_SYNC_LIMIT: ${ZHUPAY_SYNC_LIMIT:-50}
+      CREEM_BASE_URL: ${CREEM_BASE_URL:-}
+      CREEM_API_KEY: ${CREEM_API_KEY:-}
+      CREEM_WEBHOOK_SECRET: ${CREEM_WEBHOOK_SECRET:-}
+      CREEM_CURRENCY: ${CREEM_CURRENCY:-USD}
+      CREEM_SYNC_ENABLED: ${CREEM_SYNC_ENABLED:-false}
+      CREEM_SYNC_INTERVAL_MS: ${CREEM_SYNC_INTERVAL_MS:-3600000}
+      CREEM_SYNC_MAX_PAGES: ${CREEM_SYNC_MAX_PAGES:-4}
+      CREEM_SYNC_PAGE_SIZE: ${CREEM_SYNC_PAGE_SIZE:-50}
+    ports:
+      - "${DATAOCEAN_PORT:-8080}:80"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dataocean}
+      POSTGRES_USER: ${POSTGRES_USER:-dataocean}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dataocean}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dataocean} -d ${POSTGRES_DB:-dataocean}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - dataocean_postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  dataocean_postgres:

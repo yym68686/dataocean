@@ -2,6 +2,9 @@ import { dataSources, metrics } from "../data/seed";
 import type { ChartSpec, ConnectorTestResult, DataSource, MetricDefinition, QueryResult } from "../domain/types";
 import { connectorRegistry } from "./connectors";
 
+let catalogDataSources = dataSources;
+let catalogMetrics = metrics;
+
 export class QueryEngine {
   private cache = new Map<string, { expiresAt: number; result: QueryResult }>();
 
@@ -37,8 +40,13 @@ export class QueryEngine {
 
 export const queryEngine = new QueryEngine();
 
+export function setQueryCatalog(catalog: { dataSources: DataSource[]; metrics: MetricDefinition[] }) {
+  catalogDataSources = catalog.dataSources;
+  catalogMetrics = catalog.metrics;
+}
+
 export function getDataSource(id: string): DataSource {
-  const dataSource = dataSources.find((item) => item.id === id);
+  const dataSource = catalogDataSources.find((item) => item.id === id);
   if (!dataSource) {
     throw new Error(`Unknown data source: ${id}`);
   }
@@ -46,7 +54,7 @@ export function getDataSource(id: string): DataSource {
 }
 
 export function getMetric(key: string): MetricDefinition {
-  const metric = metrics.find((item) => item.key === key || item.id === key);
+  const metric = catalogMetrics.find((item) => item.key === key || item.id === key);
   if (!metric) {
     throw new Error(`Unknown metric: ${key}`);
   }
