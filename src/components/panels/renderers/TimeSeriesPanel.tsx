@@ -97,6 +97,7 @@ export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
       if (!existing) {
         seriesRefs.current.set(series.name, chartApi);
       }
+      chartApi.applyOptions(getSeriesDisplayOptions(series, chartSeries.length));
       chartApi.setData(series.data);
     });
 
@@ -191,6 +192,22 @@ function addPanelSeries(
     topColor: `${color}38`,
     bottomColor: `${color}05`,
   }) as ISeriesApi<"Line" | "Area">;
+}
+
+function getSeriesDisplayOptions(series: ChartSeries, seriesCount: number) {
+  if (seriesCount <= 1) {
+    return {};
+  }
+
+  const isSinglePoint = series.data.length < 2;
+  const isTotal = series.name.toLowerCase() === "total";
+
+  return {
+    lineVisible: !isSinglePoint,
+    pointMarkersVisible: isSinglePoint,
+    pointMarkersRadius: 4,
+    lastValueVisible: isTotal,
+  };
 }
 
 function getLatestValue(series: ChartSeries[], fallback?: string | number | boolean) {

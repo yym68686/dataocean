@@ -34,6 +34,15 @@ export function DataSourcesPage({ dataSources }: DataSourcesPageProps) {
       return;
     }
 
+    if (source.kind === "manual") {
+      const status = await apiClient.getManualRevenueStatus();
+      setTestResults((current) => ({
+        ...current,
+        [source.id]: `Manual entry source ready · ${status.entryCount} entries`,
+      }));
+      return;
+    }
+
     const result = await queryEngine.testDataSource(source);
     setTestResults((current) => ({
       ...current,

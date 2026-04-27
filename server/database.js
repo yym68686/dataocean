@@ -201,6 +201,18 @@ export async function migrateDatabase() {
       raw jsonb not null
     );
 
+    create table if not exists manual_revenue_entries (
+      id uuid primary key,
+      channel text not null,
+      amount numeric(20, 8) not null check (amount > 0),
+      currency text not null,
+      note text,
+      received_at timestamptz not null default now(),
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
     create index if not exists sessions_expires_at_idx on sessions (expires_at);
     create index if not exists audit_logs_created_at_idx on audit_logs (created_at desc);
     create index if not exists zhupay_snapshots_captured_at_idx on zhupay_merchant_snapshots (captured_at desc);
@@ -211,6 +223,9 @@ export async function migrateDatabase() {
     create index if not exists creem_transactions_status_idx on creem_transactions (status);
     create index if not exists creem_transactions_currency_idx on creem_transactions (currency);
     create index if not exists creem_subscriptions_status_idx on creem_subscriptions (status);
+    create index if not exists manual_revenue_entries_received_at_idx on manual_revenue_entries (received_at desc);
+    create index if not exists manual_revenue_entries_currency_idx on manual_revenue_entries (currency);
+    create index if not exists manual_revenue_entries_created_by_idx on manual_revenue_entries (created_by);
   `);
 
   await pool.query(

@@ -1,4 +1,4 @@
-import type { AppData, AuthUser, ChartSpec, QueryResult } from "../domain/types";
+import type { AppData, AuthUser, ChartSpec, ManualRevenueEntry, QueryResult } from "../domain/types";
 
 const TOKEN_STORAGE_KEY = "dataocean-session-token";
 
@@ -130,6 +130,62 @@ export const apiClient = {
       lastSnapshotAt?: string | null;
       lastTransactionAt?: string | null;
     }>("/api/connectors/creem/status");
+  },
+
+  async getManualRevenueStatus() {
+    return request<{
+      configured: boolean;
+      reportingCurrency: string;
+      entryCount: number;
+      totalRevenue: number;
+      todayRevenue: number;
+      warnings: string[];
+      lastReceivedAt?: string | null;
+    }>("/api/connectors/manual-revenue/status");
+  },
+
+  async listManualRevenueEntries(input: { limit?: number } = {}) {
+    const params = new URLSearchParams();
+    if (input.limit) {
+      params.set("limit", String(input.limit));
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<{ entries: ManualRevenueEntry[] }>(`/api/connectors/manual-revenue/entries${suffix}`);
+  },
+
+  async createManualRevenueEntry(input: {
+    channel: string;
+    amount: number;
+    currency: string;
+    note?: string;
+    receivedAt?: string;
+  }) {
+    return request<{ entry: ManualRevenueEntry }>("/api/connectors/manual-revenue/entries", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async updateManualRevenueEntry(
+    id: string,
+    input: Partial<{
+      channel: string;
+      amount: number;
+      currency: string;
+      note: string;
+      receivedAt: string;
+    }>,
+  ) {
+    return request<{ entry: ManualRevenueEntry }>(`/api/connectors/manual-revenue/entries/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async deleteManualRevenueEntry(id: string) {
+    return request<{ entry: { id: string } }>(`/api/connectors/manual-revenue/entries/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
   },
 
   async syncZhupay(input: { maxPages?: number; limit?: number } = {}) {

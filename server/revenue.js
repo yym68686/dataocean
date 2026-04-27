@@ -1,6 +1,5 @@
 import { pool } from "./database.js";
-
-const DEFAULT_REPORTING_CURRENCY = "USD";
+import { getFxRate, getReportingCurrency, normalizeCurrency, roundMoney } from "./currency.js";
 
 export async function queryRevenueMetric({ dataSource, metric, query }) {
   if (metric.key === "aggregate_revenue_trend") {
@@ -115,11 +114,38 @@ async function createAggregateRevenueTrendResult({ dataSource, metric, timeRange
     });
   }
 
+  const manual = await pool.query(
+    `
+      select received_at as paid_at, currency, amount as money
+      from manual_revenue_entries
+      where received_at >= $1
+      order by paid_at asc
+    `,
+    [start.toISOString()],
+  );
+
+  for (const currency of new Set(manual.rows.map((row) => normalizeCurrency(row.currency || reportingCurrency)))) {
+    const rate = getFxRate(currency, reportingCurrency);
+    const rows = manual.rows.filter((row) => normalizeCurrency(row.currency || reportingCurrency) === currency);
+
+    if (rate === null) {
+      warnings.push(`Missing DATAOCEAN_FX_${currency}_TO_${reportingCurrency}; manual ${currency} rows are excluded from aggregate total.`);
+      continue;
+    }
+
+    addRowsToBuckets({
+      rows,
+      seriesName: "Manual",
+      stepSeconds,
+      rate,
+      seriesBuckets,
+      totalBuckets,
+    });
+  }
+
   const rows = [
-    ...serializeSeriesBuckets(seriesBuckets),
-    ...Array.from(totalBuckets.entries())
-      .sort(([a], [b]) => a - b)
-      .map(([timestamp, value]) => ({ timestamp, series: "Total", value: roundMoney(value) })),
+    ...serializeCumulativeSeriesBuckets(seriesBuckets),
+    ...serializeCumulativeBuckets(totalBuckets, "Total"),
   ];
   const totalRows = rows.filter((row) => row.series === "Total");
   const latest = Number(totalRows.at(-1)?.value ?? 0);
@@ -201,6 +227,29 @@ async function getRevenueTotals(reportingCurrency) {
   customerCount = Number(customers.rows[0]?.count ?? 0);
   hasAnyData = hasAnyData || customerCount > 0;
 
+  const manual = await pool.query(`
+    select
+      currency,
+      coalesce(sum(amount), 0)::numeric as total_revenue,
+      coalesce(sum(amount) filter (where received_at >= date_trunc('day', now())), 0)::numeric as today_revenue,
+      count(*)::int as transaction_count
+    from manual_revenue_entries
+    group by currency
+  `);
+  for (const row of manual.rows) {
+    const currency = normalizeCurrency(row.currency || reportingCurrency);
+    const rate = getFxRate(currency, reportingCurrency);
+    transactionCount += Number(row.transaction_count ?? 0);
+    hasAnyData = hasAnyData || Number(row.transaction_count ?? 0) > 0;
+
+    if (rate === null) {
+      warnings.push(`Missing DATAOCEAN_FX_${currency}_TO_${reportingCurrency}; manual ${currency} rows are excluded from aggregate revenue.`);
+      continue;
+    }
+    totalRevenue += Number(row.total_revenue ?? 0) * rate;
+    todayRevenue += Number(row.today_revenue ?? 0) * rate;
+  }
+
   return {
     totalRevenue: roundMoney(totalRevenue),
     todayRevenue: roundMoney(todayRevenue),
@@ -230,10 +279,34 @@ function addRowsToBuckets({ rows, seriesName, stepSeconds, rate, seriesBuckets, 
   }
 }
 
-function serializeSeriesBuckets(seriesBuckets) {
-  return Array.from(seriesBuckets.values())
-    .sort((left, right) => left.timestamp - right.timestamp || left.series.localeCompare(right.series))
-    .map((row) => ({ ...row, value: roundMoney(row.value) }));
+function serializeCumulativeSeriesBuckets(seriesBuckets) {
+  const bySeries = new Map();
+  for (const row of seriesBuckets.values()) {
+    const rows = bySeries.get(row.series) ?? [];
+    rows.push(row);
+    bySeries.set(row.series, rows);
+  }
+
+  const cumulativeRows = [];
+  for (const [series, rows] of bySeries.entries()) {
+    let cumulative = 0;
+    for (const row of rows.sort((left, right) => left.timestamp - right.timestamp)) {
+      cumulative += Number(row.value ?? 0);
+      cumulativeRows.push({ timestamp: row.timestamp, series, value: roundMoney(cumulative) });
+    }
+  }
+
+  return cumulativeRows.sort((left, right) => left.timestamp - right.timestamp || left.series.localeCompare(right.series));
+}
+
+function serializeCumulativeBuckets(buckets, series) {
+  let cumulative = 0;
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([timestamp, value]) => {
+      cumulative += Number(value ?? 0);
+      return { timestamp, series, value: roundMoney(cumulative) };
+    });
 }
 
 function createMeta({ dataSource, metric, previousValue, warnings }) {
@@ -247,26 +320,6 @@ function createMeta({ dataSource, metric, previousValue, warnings }) {
     previousValue,
     warnings,
   };
-}
-
-function getReportingCurrency() {
-  return (process.env.DATAOCEAN_REPORTING_CURRENCY || process.env.CREEM_CURRENCY || DEFAULT_REPORTING_CURRENCY).toUpperCase();
-}
-
-function getFxRate(fromCurrency, toCurrency) {
-  const from = String(fromCurrency || toCurrency).toUpperCase();
-  const to = String(toCurrency).toUpperCase();
-  if (from === to) {
-    return 1;
-  }
-
-  const key = `DATAOCEAN_FX_${from}_TO_${to}`;
-  const value = Number(process.env[key]);
-  return Number.isFinite(value) && value > 0 ? value : null;
-}
-
-function roundMoney(value) {
-  return Math.round((Number(value) || 0) * 100) / 100;
 }
 
 function getRangeWindow(timeRange) {

@@ -8,6 +8,7 @@ import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DataSourcesPage } from "./pages/DataSourcesPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ManualRevenuePage } from "./pages/ManualRevenuePage";
 import { MetricsPage } from "./pages/MetricsPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -23,7 +24,8 @@ const sections: AppSection[] = [
   "settings",
 ];
 
-const providerSections: AppSection[] = ["provider-zhupay", "provider-creem"];
+const providerSections: AppSection[] = ["provider-zhupay", "provider-creem", "provider-manual"];
+const dashboardProviderSections: AppSection[] = ["provider-zhupay", "provider-creem"];
 const adminSections: AppSection[] = ["admin-users"];
 
 const fallbackAppData: AppData = {
@@ -185,7 +187,7 @@ export default function App() {
   }
 
   const isAdmin = authUser.role === "admin";
-  const isDashboardSection = activeSection === "command" || providerSections.includes(activeSection) || activeSection === "dashboards";
+  const isDashboardSection = activeSection === "command" || dashboardProviderSections.includes(activeSection) || activeSection === "dashboards";
   const currentTitle = isDashboardSection ? activeDashboard.name : sectionLabels[activeSection];
   const inspectorPanel = isDashboardSection ? selectedPanel : undefined;
 
@@ -306,6 +308,7 @@ export default function App() {
         {activeSection === "metrics" ? <MetricsPage metrics={appData.metrics} dataSources={appData.dataSources} /> : null}
         {activeSection === "alerts" ? <AlertsPage alerts={appData.alerts} /> : null}
         {activeSection === "templates" ? <TemplatesPage templates={appData.templates} /> : null}
+        {activeSection === "provider-manual" ? <ManualRevenuePage /> : null}
         {activeSection === "admin-users" && isAdmin ? <AdminUsersPage currentUser={authUser} /> : null}
         {activeSection === "settings" ? (
           <SettingsPage

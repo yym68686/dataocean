@@ -74,5 +74,5 @@ function formatCell(row: QueryRow, column: QueryColumn) {
 }
 
 function createRowKey(row: QueryRow, index: number) {
-  return String(row.trade_no ?? row.out_trade_no ?? row.timestamp ?? index);
+  return String(row.id ?? row.trade_no ?? row.out_trade_no ?? row.timestamp ?? index);
 }

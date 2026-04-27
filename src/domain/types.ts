@@ -5,6 +5,7 @@ export type AppSection =
   | "dashboards"
   | "provider-zhupay"
   | "provider-creem"
+  | "provider-manual"
   | "datasources"
   | "metrics"
   | "alerts"
@@ -19,6 +20,7 @@ export type DataSourceKind =
   | "stripe"
   | "zhupay"
   | "creem"
+  | "manual"
   | "aggregate"
   | "webhook"
   | "csv";
@@ -202,4 +204,18 @@ export interface AuthUser {
   apiKeyScope: "admin" | "user";
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ManualRevenueEntry {
+  id: string;
+  channel: string;
+  amount: number;
+  currency: string;
+  note: string;
+  receivedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  createdByEmail?: string | null;
 }

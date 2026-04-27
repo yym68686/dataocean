@@ -11,6 +11,14 @@ import {
   startCreemScheduler,
   syncCreem,
 } from "./creem.js";
+import {
+  createManualRevenueEntry,
+  deleteManualRevenueEntry,
+  getManualRevenueStatus,
+  listManualRevenueEntries,
+  queryManualRevenueMetric,
+  updateManualRevenueEntry,
+} from "./manualRevenue.js";
 import { queryRevenueMetric } from "./revenue.js";
 import {
   createCollectionItem,
@@ -104,6 +112,9 @@ const apiSpec = {
     "GET /api/connectors/creem/summary",
     "GET /api/connectors/creem/transactions",
     "POST /api/connectors/creem/webhook",
+    "GET /api/connectors/manual-revenue/status",
+    "GET|POST /api/connectors/manual-revenue/entries",
+    "PATCH|DELETE /api/connectors/manual-revenue/entries/:id",
   ],
   admin: ["GET /api/admin/users", "DELETE /api/admin/users/:userId", "GET /api/admin/audit-logs"],
 };
@@ -265,6 +276,11 @@ app.post("/api/query/panel", requireAuth, asyncRoute(async (req, res) => {
     return;
   }
 
+  if (dataSource.kind === "manual") {
+    res.json(await queryManualRevenueMetric({ dataSource, metric, query: panel.query }));
+    return;
+  }
+
   {
     const error = new Error(`Server-side connector is not implemented for ${dataSource.kind}`);
     error.status = 501;
@@ -332,6 +348,28 @@ app.post("/api/connectors/creem/webhook", asyncRoute(async (req, res) => {
     body: req.body,
   });
   res.json(result);
+}));
+
+app.get("/api/connectors/manual-revenue/status", requireAuth, asyncRoute(async (_req, res) => {
+  res.json(await getManualRevenueStatus());
+}));
+
+app.get("/api/connectors/manual-revenue/entries", requireAuth, asyncRoute(async (req, res) => {
+  res.json({ entries: await listManualRevenueEntries({ limit: req.query.limit }) });
+}));
+
+app.post("/api/connectors/manual-revenue/entries", requireAuth, asyncRoute(async (req, res) => {
+  assertObject(req.body);
+  res.status(201).json({ entry: await createManualRevenueEntry(req.body, req.auth.user) });
+}));
+
+app.patch("/api/connectors/manual-revenue/entries/:id", requireAuth, asyncRoute(async (req, res) => {
+  assertObject(req.body);
+  res.json({ entry: await updateManualRevenueEntry(req.params.id, req.body, req.auth.user) });
+}));
+
+app.delete("/api/connectors/manual-revenue/entries/:id", requireAuth, asyncRoute(async (req, res) => {
+  res.json({ entry: await deleteManualRevenueEntry(req.params.id, req.auth.user) });
 }));
 
 for (const slug of ["data-sources", "metrics", "dashboards", "alerts", "templates"]) {
