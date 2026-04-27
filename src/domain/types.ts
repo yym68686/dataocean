@@ -3,6 +3,8 @@ export type ThemeMode = "light" | "dark";
 export type AppSection =
   | "command"
   | "dashboards"
+  | "provider-zhupay"
+  | "provider-creem"
   | "datasources"
   | "metrics"
   | "alerts"
@@ -17,6 +19,7 @@ export type DataSourceKind =
   | "stripe"
   | "zhupay"
   | "creem"
+  | "aggregate"
   | "webhook"
   | "csv";
 
@@ -153,6 +156,7 @@ export interface QueryResult {
     freshness: "live" | "cached" | "stale";
     generatedAt: string;
     previousValue?: number;
+    warnings?: string[];
   };
 }
 

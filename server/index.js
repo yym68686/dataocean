@@ -11,6 +11,7 @@ import {
   startCreemScheduler,
   syncCreem,
 } from "./creem.js";
+import { queryRevenueMetric } from "./revenue.js";
 import {
   createCollectionItem,
   createDashboardPanel,
@@ -256,6 +257,11 @@ app.post("/api/query/panel", requireAuth, asyncRoute(async (req, res) => {
 
   if (dataSource.kind === "creem") {
     res.json(await queryCreemMetric({ dataSource, metric, query: panel.query }));
+    return;
+  }
+
+  if (dataSource.kind === "aggregate") {
+    res.json(await queryRevenueMetric({ dataSource, metric, query: panel.query }));
     return;
   }
 

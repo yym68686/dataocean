@@ -20,7 +20,7 @@ export function DashboardPage({
   theme,
   onSelectPanel,
 }: DashboardPageProps) {
-  const liveSources = dataSources.filter((source) => source.status === "live").length;
+  const activeSources = dataSources.filter((source) => ["live", "polling", "synced"].includes(source.status)).length;
 
   return (
     <>
@@ -34,8 +34,8 @@ export function DashboardPage({
           <strong>{activeRange.toUpperCase()}</strong>
         </div>
         <div className="do-query-chip">
-          <span className="do-query-label">Live Sources</span>
-          <strong>{liveSources} / {dataSources.length}</strong>
+          <span className="do-query-label">Active Sources</span>
+          <strong>{activeSources} / {dataSources.length}</strong>
         </div>
         <div className="do-query-chip">
           <span className="do-query-label">Semantic Metrics</span>

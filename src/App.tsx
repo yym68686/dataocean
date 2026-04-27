@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiClient, clearStoredToken, getStoredToken, setStoredToken, type AuthResponse } from "./api/client";
-import { alerts, dashboard, dataSources, metrics, templates } from "./data/seed";
+import { alerts, dashboard, dashboards, dataSources, metrics, templates } from "./data/seed";
 import { sectionLabels, timeRanges } from "./domain/constants";
 import type { AppData, AppSection, AuthUser, ThemeMode, TimeRange } from "./domain/types";
 import { AlertsPage } from "./pages/AlertsPage";
@@ -16,7 +16,6 @@ import { setQueryCatalog } from "./services/queryEngine";
 
 const sections: AppSection[] = [
   "command",
-  "dashboards",
   "datasources",
   "metrics",
   "alerts",
@@ -24,13 +23,14 @@ const sections: AppSection[] = [
   "settings",
 ];
 
+const providerSections: AppSection[] = ["provider-zhupay", "provider-creem"];
 const adminSections: AppSection[] = ["admin-users"];
 
 const fallbackAppData: AppData = {
   dataSources,
   metrics,
   dashboard,
-  dashboards: [dashboard],
+  dashboards,
   alerts,
   templates,
 };
@@ -53,9 +53,17 @@ export default function App() {
     fallbackAppData.dashboard.panels[4]?.id ?? fallbackAppData.dashboard.panels[0]?.id,
   );
 
+  const dashboards = useMemo(
+    () => (appData.dashboards?.length ? appData.dashboards : [appData.dashboard]),
+    [appData.dashboard, appData.dashboards],
+  );
+  const activeDashboard = useMemo(
+    () => getDashboardForSection(activeSection, dashboards, appData.dashboard),
+    [activeSection, appData.dashboard, dashboards],
+  );
   const selectedPanel = useMemo(
-    () => appData.dashboard.panels.find((panel) => panel.id === selectedPanelId) ?? appData.dashboard.panels[0],
-    [appData.dashboard.panels, selectedPanelId],
+    () => activeDashboard.panels.find((panel) => panel.id === selectedPanelId) ?? activeDashboard.panels[0],
+    [activeDashboard.panels, selectedPanelId],
   );
 
   useEffect(() => {
@@ -103,10 +111,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!appData.dashboard.panels.some((panel) => panel.id === selectedPanelId)) {
-      setSelectedPanelId(appData.dashboard.panels[0]?.id);
+    if (!activeDashboard.panels.some((panel) => panel.id === selectedPanelId)) {
+      setSelectedPanelId(activeDashboard.panels[0]?.id);
+      setActiveRange(activeDashboard.defaultTimeRange);
     }
-  }, [appData.dashboard.panels, selectedPanelId]);
+  }, [activeDashboard, selectedPanelId]);
 
   useEffect(() => {
     if (authUser?.role !== "admin" && adminSections.includes(activeSection)) {
@@ -176,8 +185,9 @@ export default function App() {
   }
 
   const isAdmin = authUser.role === "admin";
-  const currentTitle = activeSection === "command" ? appData.dashboard.name : sectionLabels[activeSection];
-  const inspectorPanel = activeSection === "command" || activeSection === "dashboards" ? selectedPanel : undefined;
+  const isDashboardSection = activeSection === "command" || providerSections.includes(activeSection) || activeSection === "dashboards";
+  const currentTitle = isDashboardSection ? activeDashboard.name : sectionLabels[activeSection];
+  const inspectorPanel = isDashboardSection ? selectedPanel : undefined;
 
   return (
     <div className="mt-app do-app">
@@ -189,6 +199,22 @@ export default function App() {
 
         <nav className="mt-nav" aria-label="Primary">
           {sections.map((section) => (
+            <button
+              className="mt-nav-item do-nav-button"
+              data-active={activeSection === section}
+              key={section}
+              onClick={() => setActiveSection(section)}
+              type="button"
+            >
+              <span className="mt-dot" />
+              <span>{sectionLabels[section]}</span>
+            </button>
+          ))}
+        </nav>
+
+        <nav className="mt-nav do-admin-nav" aria-label="Providers">
+          <div className="do-nav-heading">Providers</div>
+          {providerSections.map((section) => (
             <button
               className="mt-nav-item do-nav-button"
               data-active={activeSection === section}
@@ -265,10 +291,10 @@ export default function App() {
           </div>
         </header>
 
-        {activeSection === "command" || activeSection === "dashboards" ? (
+        {isDashboardSection ? (
           <DashboardPage
             activeRange={activeRange}
-            dashboard={appData.dashboard}
+            dashboard={activeDashboard}
             dataSources={appData.dataSources}
             metrics={appData.metrics}
             onSelectPanel={setSelectedPanelId}
@@ -299,4 +325,20 @@ export default function App() {
       />
     </div>
   );
+}
+
+function getDashboardForSection(section: AppSection, dashboards: typeof fallbackAppData.dashboards, fallback: typeof fallbackAppData.dashboard) {
+  const dashboardIds: Partial<Record<AppSection, string>> = {
+    command: "dashboard-command-center",
+    dashboards: "dashboard-command-center",
+    "provider-zhupay": "dashboard-zhupay-revenue",
+    "provider-creem": "dashboard-creem-revenue",
+  };
+  const dashboardId = dashboardIds[section];
+
+  if (!dashboardId) {
+    return fallback;
+  }
+
+  return dashboards?.find((dashboardItem) => dashboardItem.id === dashboardId) ?? fallback;
 }

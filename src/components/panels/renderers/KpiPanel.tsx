@@ -14,6 +14,7 @@ export function KpiPanel({ panel }: KpiPanelProps) {
     ? formatDelta(latest, result?.meta.previousValue, result?.meta.metric.format)
     : { intent: "neutral" as const, label: "waiting" };
   const value = hasValue && result ? formatMetricValue(latest, result.meta.metric.format, result.meta.unit) : "--";
+  const warnings = result?.meta.warnings ?? [];
 
   return (
     <div className="do-kpi-panel">
@@ -29,6 +30,7 @@ export function KpiPanel({ panel }: KpiPanelProps) {
             {delta.label}
           </span>
         )}
+        {warnings.length > 0 ? <span className="mt-badge" title={warnings.join("\n")}>partial</span> : null}
         <span>{result?.meta.freshness ?? "querying"}</span>
       </div>
     </div>

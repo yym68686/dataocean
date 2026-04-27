@@ -41,6 +41,7 @@ export const connectorRegistry: Record<string, DataConnector> = {
   stripe: new UnconfiguredConnector(),
   zhupay: new UnconfiguredConnector(),
   creem: new UnconfiguredConnector(),
+  aggregate: new UnconfiguredConnector(),
   webhook: new UnconfiguredConnector(),
   csv: new UnconfiguredConnector(),
 };
