@@ -1,9 +1,18 @@
 import { pool } from "./database.js";
 import { getFxRate, getReportingCurrency, normalizeCurrency, roundMoney } from "./currency.js";
+import {
+  getSub2ApiAggregateProfitRows,
+  getSub2ApiConfig,
+  getSub2ApiRevenueEntryRows,
+  getSub2ApiSummary,
+} from "./sub2api.js";
 
 export async function queryRevenueMetric({ dataSource, metric, query }) {
   if (metric.key === "aggregate_revenue_trend") {
     return createAggregateRevenueTrendResult({ dataSource, metric, timeRange: query.timeRange });
+  }
+  if (metric.key === "aggregate_revenue_entries") {
+    return createAggregateRevenueEntriesResult({ dataSource, metric, timeRange: query.timeRange });
   }
 
   return createAggregateKpiResult({ dataSource, metric });
@@ -51,7 +60,7 @@ async function createAggregateKpiResult({ dataSource, metric }) {
 
 async function createAggregateRevenueTrendResult({ dataSource, metric, timeRange }) {
   const reportingCurrency = getReportingCurrency();
-  const { start, stepSeconds } = getRangeWindow(timeRange);
+  const { start, stepSeconds } = getDailyRangeWindow(timeRange);
   const warnings = [];
   const seriesBuckets = new Map();
   const totalBuckets = new Map();
@@ -143,9 +152,31 @@ async function createAggregateRevenueTrendResult({ dataSource, metric, timeRange
     });
   }
 
+  const sub2apiConfig = getSub2ApiConfig();
+  if (sub2apiConfig.configured) {
+    if (sub2apiConfig.currency === reportingCurrency) {
+      try {
+        const sub2apiRows = await getSub2ApiAggregateProfitRows({ timeRange });
+        for (const row of sub2apiRows) {
+          const key = `Sub2API:${row.timestamp}`;
+          seriesBuckets.set(key, {
+            timestamp: row.timestamp,
+            series: "Sub2API",
+            value: (seriesBuckets.get(key)?.value ?? 0) + Number(row.value ?? 0),
+          });
+          totalBuckets.set(row.timestamp, (totalBuckets.get(row.timestamp) ?? 0) + Number(row.value ?? 0));
+        }
+      } catch (error) {
+        warnings.push(`Sub2API aggregate revenue is unavailable: ${error.message ?? "query failed"}`);
+      }
+    } else {
+      warnings.push(`Sub2API reports ${sub2apiConfig.currency}; set DATAOCEAN_REPORTING_CURRENCY=${sub2apiConfig.currency} or add FX conversion before aggregating it.`);
+    }
+  }
+
   const rows = [
-    ...serializeCumulativeSeriesBuckets(seriesBuckets),
-    ...serializeCumulativeBuckets(totalBuckets, "Total"),
+    ...serializeSeriesBuckets(seriesBuckets),
+    ...serializeBuckets(totalBuckets, "Total"),
   ];
   const totalRows = rows.filter((row) => row.series === "Total");
   const latest = Number(totalRows.at(-1)?.value ?? 0);
@@ -159,6 +190,157 @@ async function createAggregateRevenueTrendResult({ dataSource, metric, timeRange
     ],
     rows,
     meta: createMeta({ dataSource, metric, previousValue: previous, warnings }),
+  };
+}
+
+async function createAggregateRevenueEntriesResult({ dataSource, metric, timeRange }) {
+  const reportingCurrency = getReportingCurrency();
+  const { start } = getRangeWindow(timeRange);
+  const warnings = [];
+  const entries = [];
+
+  const zhupayRate = getFxRate("CNY", reportingCurrency);
+  if (zhupayRate === null) {
+    warnings.push(`Missing DATAOCEAN_FX_CNY_TO_${reportingCurrency}; Zhupay rows do not have normalized values.`);
+  }
+  const zhupay = await pool.query(
+    `
+      select
+        coalesce(endtime, addtime, updated_at) as received_at,
+        trade_no,
+        out_trade_no,
+        type,
+        name,
+        money
+      from zhupay_orders
+      where status = 1
+        and coalesce(endtime, addtime, updated_at) >= $1
+      order by received_at desc
+      limit 200
+    `,
+    [start.toISOString()],
+  );
+  for (const row of zhupay.rows) {
+    entries.push(createRevenueEntryRow({
+      receivedAt: row.received_at,
+      provider: "Zhupay",
+      channel: row.type || "payment",
+      amount: row.money,
+      currency: "CNY",
+      normalizedRate: zhupayRate,
+      reportingCurrency,
+      note: row.name || row.out_trade_no || row.trade_no || "",
+      sourceId: row.trade_no,
+    }));
+  }
+
+  const creem = await pool.query(
+    `
+      select
+        source_created_at as received_at,
+        id,
+        type,
+        status,
+        currency,
+        description,
+        order_id,
+        case
+          when status in ('refunded', 'chargeback') then 0
+          else greatest(coalesce(amount_paid, amount, 0) - coalesce(refunded_amount, 0), 0) / 100.0
+        end as amount
+      from creem_transactions
+      where status in ('paid', 'partially_refunded', 'refunded', 'chargeback')
+        and source_created_at >= $1
+      order by received_at desc
+      limit 200
+    `,
+    [start.toISOString()],
+  );
+  for (const row of creem.rows) {
+    const currency = normalizeCurrency(row.currency || reportingCurrency);
+    const rate = getFxRate(currency, reportingCurrency);
+    if (rate === null) {
+      warnings.push(`Missing DATAOCEAN_FX_${currency}_TO_${reportingCurrency}; Creem ${currency} rows do not have normalized values.`);
+    }
+    entries.push(createRevenueEntryRow({
+      receivedAt: row.received_at,
+      provider: "Creem",
+      channel: row.type || row.status || "transaction",
+      amount: row.amount,
+      currency,
+      normalizedRate: rate,
+      reportingCurrency,
+      note: row.description || row.order_id || row.id || "",
+      sourceId: row.id,
+    }));
+  }
+
+  const manual = await pool.query(
+    `
+      select
+        id,
+        channel,
+        amount,
+        currency,
+        note,
+        received_at
+      from manual_revenue_entries
+      where received_at >= $1
+      order by received_at desc
+      limit 200
+    `,
+    [start.toISOString()],
+  );
+  for (const row of manual.rows) {
+    const currency = normalizeCurrency(row.currency || reportingCurrency);
+    const rate = getFxRate(currency, reportingCurrency);
+    if (rate === null) {
+      warnings.push(`Missing DATAOCEAN_FX_${currency}_TO_${reportingCurrency}; manual ${currency} rows do not have normalized values.`);
+    }
+    entries.push(createRevenueEntryRow({
+      receivedAt: row.received_at,
+      provider: "Manual",
+      channel: row.channel || "Manual",
+      amount: row.amount,
+      currency,
+      normalizedRate: rate,
+      reportingCurrency,
+      note: row.note || "",
+      sourceId: row.id,
+    }));
+  }
+
+  const sub2apiConfig = getSub2ApiConfig();
+  if (sub2apiConfig.configured) {
+    if (sub2apiConfig.currency === reportingCurrency) {
+      try {
+        const sub2apiEntries = await getSub2ApiRevenueEntryRows({ timeRange });
+        entries.push(...sub2apiEntries);
+      } catch (error) {
+        warnings.push(`Sub2API revenue entries are unavailable: ${error.message ?? "query failed"}`);
+      }
+    } else {
+      warnings.push(`Sub2API reports ${sub2apiConfig.currency}; entries are not normalized into ${reportingCurrency}.`);
+    }
+  }
+
+  const rows = entries
+    .filter((row) => row.received_at)
+    .sort((left, right) => Number(right.received_at) - Number(left.received_at))
+    .slice(0, 50);
+
+  return {
+    columns: [
+      { key: "received_at", label: "Received", type: "time" },
+      { key: "provider", label: "Provider", type: "string" },
+      { key: "channel", label: "Channel", type: "string" },
+      { key: "amount", label: "Amount", type: "number" },
+      { key: "currency", label: "Currency", type: "string" },
+      { key: "normalized_value", label: reportingCurrency, type: "number", format: "currency", unit: reportingCurrency },
+      { key: "note", label: "Note", type: "string" },
+    ],
+    rows,
+    meta: createMeta({ dataSource, metric, previousValue: rows.length, warnings: Array.from(new Set(warnings)) }),
   };
 }
 
@@ -250,6 +432,22 @@ async function getRevenueTotals(reportingCurrency) {
     todayRevenue += Number(row.today_revenue ?? 0) * rate;
   }
 
+  const sub2apiConfig = getSub2ApiConfig();
+  if (sub2apiConfig.configured) {
+    if (sub2apiConfig.currency === reportingCurrency) {
+      try {
+        const summary = await getSub2ApiSummary();
+        totalRevenue += Number(summary.totalProfit ?? 0);
+        todayRevenue += Number(summary.todayProfit ?? 0);
+        hasAnyData = hasAnyData || Number(summary.totalProfit ?? 0) > 0 || Number(summary.requestCount ?? 0) > 0;
+      } catch (error) {
+        warnings.push(`Sub2API revenue is unavailable: ${error.message ?? "query failed"}`);
+      }
+    } else {
+      warnings.push(`Sub2API reports ${sub2apiConfig.currency}; set DATAOCEAN_REPORTING_CURRENCY=${sub2apiConfig.currency} or add FX conversion before aggregating it.`);
+    }
+  }
+
   return {
     totalRevenue: roundMoney(totalRevenue),
     todayRevenue: roundMoney(todayRevenue),
@@ -279,34 +477,38 @@ function addRowsToBuckets({ rows, seriesName, stepSeconds, rate, seriesBuckets, 
   }
 }
 
-function serializeCumulativeSeriesBuckets(seriesBuckets) {
-  const bySeries = new Map();
-  for (const row of seriesBuckets.values()) {
-    const rows = bySeries.get(row.series) ?? [];
-    rows.push(row);
-    bySeries.set(row.series, rows);
-  }
-
-  const cumulativeRows = [];
-  for (const [series, rows] of bySeries.entries()) {
-    let cumulative = 0;
-    for (const row of rows.sort((left, right) => left.timestamp - right.timestamp)) {
-      cumulative += Number(row.value ?? 0);
-      cumulativeRows.push({ timestamp: row.timestamp, series, value: roundMoney(cumulative) });
-    }
-  }
-
-  return cumulativeRows.sort((left, right) => left.timestamp - right.timestamp || left.series.localeCompare(right.series));
+function serializeSeriesBuckets(seriesBuckets) {
+  return Array.from(seriesBuckets.values())
+    .sort((left, right) => left.timestamp - right.timestamp || left.series.localeCompare(right.series))
+    .map((row) => ({ ...row, value: roundMoney(row.value) }));
 }
 
-function serializeCumulativeBuckets(buckets, series) {
-  let cumulative = 0;
+function serializeBuckets(buckets, series) {
   return Array.from(buckets.entries())
     .sort(([a], [b]) => a - b)
-    .map(([timestamp, value]) => {
-      cumulative += Number(value ?? 0);
-      return { timestamp, series, value: roundMoney(cumulative) };
-    });
+    .map(([timestamp, value]) => ({ timestamp, series, value: roundMoney(value) }));
+}
+
+function createRevenueEntryRow({ receivedAt, provider, channel, amount, currency, normalizedRate, reportingCurrency, note, sourceId }) {
+  const value = Number(amount ?? 0);
+  const row = {
+    id: `${provider}:${sourceId ?? receivedAt ?? Math.random()}`,
+    received_at: Math.floor(new Date(receivedAt).getTime() / 1000),
+    provider,
+    channel: String(channel || provider),
+    amount: roundMoney(value),
+    currency: normalizeCurrency(currency),
+    note: String(note || ""),
+  };
+
+  if (normalizedRate !== null) {
+    row.normalized_value = roundMoney(value * normalizedRate);
+  }
+  if (row.currency === reportingCurrency && normalizedRate === null) {
+    row.normalized_value = roundMoney(value);
+  }
+
+  return row;
 }
 
 function createMeta({ dataSource, metric, previousValue, warnings }) {
@@ -335,5 +537,21 @@ function getRangeWindow(timeRange) {
   return {
     start: new Date(now - config.durationMs),
     stepSeconds: config.stepSeconds,
+  };
+}
+
+function getDailyRangeWindow(timeRange) {
+  const now = Date.now();
+  const config = {
+    "1h": { durationMs: 24 * 60 * 60 * 1000 },
+    "1d": { durationMs: 7 * 24 * 60 * 60 * 1000 },
+    "1w": { durationMs: 7 * 24 * 60 * 60 * 1000 },
+    "1m": { durationMs: 30 * 24 * 60 * 60 * 1000 },
+    all: { durationMs: 365 * 24 * 60 * 60 * 1000 },
+  }[timeRange] ?? { durationMs: 30 * 24 * 60 * 60 * 1000 };
+
+  return {
+    start: new Date(now - config.durationMs),
+    stepSeconds: 24 * 60 * 60,
   };
 }

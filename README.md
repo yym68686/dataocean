@@ -42,7 +42,7 @@ Implemented:
 - REST API for state, data sources, metrics, dashboards, panels, alerts, and templates
 - connector registry for API, Stripe, Prometheus, PostgreSQL, webhook, and CSV
 - no seeded business values; prepared panels stay empty/error until real credentials and sync are configured
-- Zhupay V2 and Creem connector shells for real revenue monitoring with signed callbacks, scheduled sync, and local order storage
+- Zhupay V2, Creem, and Sub2API connector shells for real revenue monitoring with signed callbacks, scheduled sync, local storage, or live admin API reads
 - query engine with short-lived caching and auto-refreshing panel queries
 - dashboard page with KPI, time-series, signal-list, status-card, and table panels
 - Data Sources, Metrics, Alerts, Templates, and Settings pages
@@ -197,6 +197,11 @@ Creem:
 - `GET /api/connectors/creem/transactions`
 - `POST /api/connectors/creem/webhook`
 
+Sub2API:
+
+- `GET /api/connectors/sub2api/status`
+- `POST /api/connectors/sub2api/sync`
+
 Send session tokens or API keys with:
 
 ```http
@@ -302,6 +307,31 @@ The webhook verifies the `creem-signature` HMAC-SHA256 header with
 `CREEM_WEBHOOK_SECRET`, stores the event, and updates transactions, customers,
 subscriptions, and summary snapshots. If webhook setup would disturb the
 existing app, leave it disabled and rely on scheduled sync.
+
+## Sub2API Setup
+
+The Sub2API connector is server-side only. Browser code never receives the admin
+API key. DataOcean reads Sub2API admin dashboard group usage, filters configured
+groups, and converts `actual_cost` into earned revenue with
+`SUB2API_PROFIT_RATE`.
+
+```text
+SUB2API_BASE_URL=https://s2a.ohmycdn.com
+SUB2API_ADMIN_API_KEY=<admin API key>
+SUB2API_CHANNELS=codex,codexplus
+SUB2API_PROFIT_RATE=0.025
+SUB2API_CURRENCY=USD
+SUB2API_START_DATE=2020-01-01
+SUB2API_TIMEZONE=Asia/Shanghai
+SUB2API_CACHE_TTL_MS=60000
+```
+
+Refresh the live cache after setting credentials:
+
+```bash
+curl -X POST https://dataocean.fugue.pro/api/connectors/sub2api/sync \
+  -H "Authorization: Bearer $DATAOCEAN_ADMIN_API_KEY"
+```
 
 ## Directory Structure
 

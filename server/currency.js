@@ -1,5 +1,6 @@
 const DEFAULT_REPORTING_CURRENCY = "USD";
 const USD_STABLECOINS = new Set(["USDC", "USDT"]);
+const DEFAULT_USD_TO_CNY = 7.2;
 
 export function getReportingCurrency() {
   return (process.env.DATAOCEAN_REPORTING_CURRENCY || process.env.CREEM_CURRENCY || DEFAULT_REPORTING_CURRENCY).toUpperCase();
@@ -29,4 +30,25 @@ export function normalizeCurrency(value) {
 
 export function roundMoney(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+export function getCurrencyDisplayConfig() {
+  const cnyToUsd = getFxRate("CNY", "USD") ?? 1 / DEFAULT_USD_TO_CNY;
+  const usdToCny = getFxRate("USD", "CNY") ?? 1 / cnyToUsd;
+
+  return {
+    reportingCurrency: getReportingCurrency(),
+    supportedDisplayCurrencies: ["USD", "CNY"],
+    defaultDisplayCurrency: "USD",
+    rates: {
+      USD: {
+        USD: 1,
+        CNY: usdToCny,
+      },
+      CNY: {
+        USD: cnyToUsd,
+        CNY: 1,
+      },
+    },
+  };
 }

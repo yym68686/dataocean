@@ -1,37 +1,40 @@
 import type { AlertRule } from "../domain/types";
+import { formatDateTime } from "../lib/format";
+import { useI18n } from "../lib/i18n";
 
 type AlertsPageProps = {
   alerts: AlertRule[];
 };
 
 export function AlertsPage({ alerts }: AlertsPageProps) {
+  const { intlLocale, t, te } = useI18n();
   return (
     <section className="mt-grid">
       <article className="mt-card mt-span-12">
         <div className="mt-card-header">
           <div>
-            <h2 className="mt-card-title">Alerts</h2>
-            <p className="mt-card-subtitle">Rules turn metric state into decisions, notifications, and incident context.</p>
+            <h2 className="mt-card-title">{t("alerts.title")}</h2>
+            <p className="mt-card-subtitle">{t("alerts.subtitle")}</p>
           </div>
           <button className="mt-button" data-variant="primary" type="button">
-            New alert
+            {t("alerts.new")}
           </button>
         </div>
         {alerts.length === 0 ? (
           <div className="do-empty-state do-table-empty">
-            <h2>No real alerts</h2>
-            <p>Alert rules will be added after real metrics exist.</p>
+            <h2>{t("alerts.emptyTitle")}</h2>
+            <p>{t("alerts.emptyText")}</p>
           </div>
         ) : (
           <table className="mt-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Metric</th>
-                <th>Condition</th>
-                <th>Severity</th>
-                <th>Status</th>
-                <th>Last Triggered</th>
+                <th>{t("alerts.name")}</th>
+                <th>{t("alerts.metric")}</th>
+                <th>{t("alerts.condition")}</th>
+                <th>{t("alerts.severity")}</th>
+                <th>{t("alerts.status")}</th>
+                <th>{t("alerts.lastTriggered")}</th>
               </tr>
             </thead>
             <tbody>
@@ -42,11 +45,11 @@ export function AlertsPage({ alerts }: AlertsPageProps) {
                   <td>{alert.condition}</td>
                   <td>
                     <span className="mt-badge" data-intent={alert.severity === "critical" ? "negative" : undefined}>
-                      {alert.severity}
+                      {te("severity", alert.severity)}
                     </span>
                   </td>
-                  <td>{alert.status}</td>
-                  <td>{alert.lastTriggeredAt ? new Date(alert.lastTriggeredAt).toLocaleString() : "Never"}</td>
+                  <td>{te("status", alert.status)}</td>
+                  <td>{alert.lastTriggeredAt ? formatDateTime(alert.lastTriggeredAt, intlLocale) : t("common.never")}</td>
                 </tr>
               ))}
             </tbody>

@@ -1,19 +1,22 @@
-import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import {
   AreaSeries,
   ColorType,
   createChart,
   LineSeries,
+  LineStyle,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
   type MouseEventParams,
   type Time,
 } from "lightweight-charts";
-import type { ChartSpec, QueryRow, ThemeMode } from "../../../domain/types";
+import type { ChartSpec, MetricFormat, QueryRow, ThemeMode, TimeRange } from "../../../domain/types";
 import { timeRanges } from "../../../domain/constants";
-import { formatDelta, formatMetricValue } from "../../../lib/format";
+import { convertMetricValue, formatDelta, formatMetricValue, type CurrencyFormatOptions } from "../../../lib/format";
 import { usePanelQuery } from "../../../hooks/usePanelQuery";
+import { useDisplayCurrency } from "../../../lib/displayCurrency";
+import { useI18n } from "../../../lib/i18n";
 import {
   createMarketAreaSeriesOptions,
   createMarketChartOptions,
@@ -30,26 +33,54 @@ type ChartSeries = {
   data: Array<{ time: Time; value: number }>;
 };
 
-type HoverPriceLine = {
-  series: ISeriesApi<"Line" | "Area">;
-  line: IPriceLine;
-};
-
 const seriesColors = ["#1652f0", "#00a37a", "#f59e0b", "#7c3aed", "#ef4444"];
 
 export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
+  const { intlLocale, t, tx } = useI18n();
+  const { currencyFormatOptions } = useDisplayCurrency();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRefs = useRef<Map<string, ISeriesApi<"Line" | "Area">>>(new Map());
-  const hoverPriceLineRef = useRef<HoverPriceLine | null>(null);
-  const { result, loading, error } = usePanelQuery(panel);
-  const chartSeries = useMemo(() => createChartSeries(result?.rows ?? [], panel.title), [panel.title, result]);
+  const hoverPriceLinesRef = useRef<Map<ISeriesApi<"Line" | "Area">, IPriceLine>>(new Map());
+  const [selectedRange, setSelectedRange] = useState(panel.query.timeRange);
+  const queryPanel = useMemo(
+    () => ({
+      ...panel,
+      query: {
+        ...panel.query,
+        timeRange: selectedRange,
+      },
+    }),
+    [panel, selectedRange],
+  );
+  const { result, loading, error } = usePanelQuery(queryPanel);
+  const chartSeries = useMemo(
+    () => createChartSeries(
+      result?.rows ?? [],
+      panel.title,
+      selectedRange,
+      result?.meta.metric.format,
+      result?.meta.unit,
+      currencyFormatOptions,
+    ),
+    [currencyFormatOptions, panel.title, result, selectedRange],
+  );
+  const displayUnit = result
+    ? convertMetricValue(0, result.meta.metric.format, result.meta.unit, currencyFormatOptions).unit
+    : undefined;
 
   const hasValue = Boolean(result?.rows.length);
   const latest = getLatestValue(chartSeries, result?.rows.at(-1)?.value);
+  const previousValue = result
+    ? convertMetricValue(Number(result.meta.previousValue ?? latest), result.meta.metric.format, result.meta.unit, currencyFormatOptions).value
+    : undefined;
   const delta = hasValue
-    ? formatDelta(latest, result?.meta.previousValue, result?.meta.metric.format)
-    : { intent: "neutral" as const, label: "waiting" };
+    ? formatDelta(latest, previousValue, result?.meta.metric.format, t("common.live"))
+    : { intent: "neutral" as const, label: t("common.waiting") };
+
+  useEffect(() => {
+    setSelectedRange(panel.query.timeRange);
+  }, [panel.id, panel.query.timeRange]);
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -57,10 +88,10 @@ export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
     }
 
     const chart = createChart(containerRef.current, {
-      ...(createMarketChartOptions(theme) as object),
+      ...(createMarketChartOptions(theme, intlLocale) as object),
       autoSize: true,
       layout: {
-        ...(createMarketChartOptions(theme) as { layout: object }).layout,
+        ...(createMarketChartOptions(theme, intlLocale) as { layout: object }).layout,
         background: { type: ColorType.Solid, color: "transparent" },
       },
     });
@@ -77,38 +108,25 @@ export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
     resizeObserver.observe(containerRef.current);
 
     const handleCrosshairMove = (param: MouseEventParams<Time>) => {
-      if (!param.point) {
-        clearHoverPriceLine(hoverPriceLineRef);
+      if (!param.point || param.time === undefined) {
+        clearHoverPriceLines(hoverPriceLinesRef);
         return;
       }
 
-      const hoveredSeries = param.hoveredInfo?.series ?? param.hoveredSeries;
-      const targetSeries = resolveHoverSeries(chart, hoveredSeries, param, seriesRefs.current);
-      if (!targetSeries) {
-        clearHoverPriceLine(hoverPriceLineRef);
-        return;
-      }
-
-      const value = getSeriesDataValue(param.seriesData.get(targetSeries));
-      if (value === undefined) {
-        clearHoverPriceLine(hoverPriceLineRef);
-        return;
-      }
-
-      showHoverPriceLine(hoverPriceLineRef, targetSeries, value, getSeriesColor(targetSeries, seriesRefs.current));
+      showHoverPriceLines(hoverPriceLinesRef, param.seriesData, seriesRefs.current);
     };
 
     chart.subscribeCrosshairMove(handleCrosshairMove);
 
     return () => {
       chart.unsubscribeCrosshairMove(handleCrosshairMove);
-      clearHoverPriceLine(hoverPriceLineRef);
+      clearHoverPriceLines(hoverPriceLinesRef);
       resizeObserver.disconnect();
       chart.remove();
       chartRef.current = null;
       seriesRefs.current = new Map();
     };
-  }, [panel.style?.seriesStyle, theme]);
+  }, [intlLocale, panel.style?.seriesStyle, theme]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -119,6 +137,7 @@ export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
     const nextNames = new Set(chartSeries.map((series) => series.name));
     for (const [name, series] of seriesRefs.current.entries()) {
       if (!nextNames.has(name)) {
+        removeHoverPriceLine(hoverPriceLinesRef, series);
         chart.removeSeries(series);
         seriesRefs.current.delete(name);
       }
@@ -135,20 +154,28 @@ export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
       chartApi.setData(series.data);
     });
 
+    chart.applyOptions({
+      localization: {
+        priceFormatter: (price: number) => result
+          ? formatMetricValue(price, result.meta.metric.format, displayUnit, intlLocale)
+          : new Intl.NumberFormat(intlLocale, { notation: "compact", maximumFractionDigits: 1 }).format(price),
+      },
+    });
+
     if (chartSeries.some((series) => series.data.length > 0)) {
       chart.timeScale().fitContent();
     }
-  }, [chartSeries, panel, theme]);
+  }, [chartSeries, displayUnit, intlLocale, panel, result, theme]);
 
   return (
     <div className="do-chart-panel">
       <div className="mt-card-header">
         <div>
-          <h2 className="mt-card-title">{panel.title}</h2>
-          <p className="mt-card-subtitle">{panel.description}</p>
+          <h2 className="mt-card-title">{tx(panel.title)}</h2>
+          <p className="mt-card-subtitle">{tx(panel.description)}</p>
         </div>
         <div className="do-chart-readout">
-          <span>{hasValue && result ? formatMetricValue(latest, result.meta.metric.format, result.meta.unit) : "--"}</span>
+          <span>{hasValue && result ? formatMetricValue(latest, result.meta.metric.format, displayUnit, intlLocale) : "--"}</span>
           <span className="mt-badge" data-intent={delta.intent === "neutral" ? undefined : delta.intent}>
             {delta.label}
           </span>
@@ -158,15 +185,21 @@ export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
       <div className="do-chart-controls">
         <div className="mt-segmented">
           {timeRanges.map((range) => (
-            <button className="mt-segment" data-active={panel.query.timeRange === range.value} key={range.value} type="button">
+            <button
+              className="mt-segment"
+              data-active={selectedRange === range.value}
+              key={range.value}
+              onClick={() => setSelectedRange(range.value)}
+              type="button"
+            >
               {range.label}
             </button>
           ))}
         </div>
         {result?.meta.warnings?.length ? (
-          <span className="mt-badge" title={result.meta.warnings.join("\n")}>partial</span>
+          <span className="mt-badge" title={result.meta.warnings.join("\n")}>{t("common.partial")}</span>
         ) : null}
-        <span className="do-refresh-label">{loading ? "Querying..." : result?.meta.freshness ?? "idle"}</span>
+        <span className="do-refresh-label">{loading ? t("common.querying") : result?.meta.freshness ? t(`common.${result.meta.freshness}`) : t("common.idle")}</span>
       </div>
 
       {chartSeries.length > 1 ? (
@@ -174,7 +207,7 @@ export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
           {chartSeries.map((series, index) => (
             <span key={series.name}>
               <i style={{ background: seriesColors[index % seriesColors.length] }} />
-              {series.name}
+              {tx(series.name)}
             </span>
           ))}
         </div>
@@ -185,23 +218,93 @@ export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
   );
 }
 
-function createChartSeries(rows: QueryRow[], fallbackName: string): ChartSeries[] {
-  const byName = new Map<string, ChartSeries>();
+function createChartSeries(
+  rows: QueryRow[],
+  fallbackName: string,
+  timeRange: TimeRange,
+  format?: MetricFormat,
+  unit?: string,
+  currencyFormatOptions?: CurrencyFormatOptions,
+): ChartSeries[] {
+  const byName = new Map<string, Map<number, number>>();
+  const allTimes = new Set<number>();
 
   for (const row of rows) {
     const name = String(row.series ?? fallbackName);
-    const series = byName.get(name) ?? { name, data: [] };
-    series.data.push({
-      time: Number(row.timestamp) as Time,
-      value: Number(row.value),
-    });
+    const time = Number(row.timestamp);
+    const value = convertMetricValue(Number(row.value), format, unit, currencyFormatOptions).value;
+
+    if (!Number.isFinite(time) || !Number.isFinite(value)) {
+      continue;
+    }
+
+    const series = byName.get(name) ?? new Map<number, number>();
+    series.set(time, (series.get(time) ?? 0) + value);
     byName.set(name, series);
+    allTimes.add(time);
   }
 
-  return Array.from(byName.values()).map((series) => ({
-    ...series,
-    data: series.data.sort((left, right) => Number(left.time) - Number(right.time)),
+  const timeline = createDenseTimeline(Array.from(allTimes), timeRange);
+
+  return Array.from(byName.entries()).map(([name, values]) => ({
+    name,
+    data: timeline.map((time) => ({
+      time: time as Time,
+      value: values.get(time) ?? 0,
+    })),
   }));
+}
+
+function createDenseTimeline(times: number[], timeRange: TimeRange) {
+  const sorted = Array.from(new Set(times)).sort((left, right) => left - right);
+  if (sorted.length < 2) {
+    return sorted;
+  }
+
+  const step = inferStepSeconds(sorted, timeRange);
+  if (!step) {
+    return sorted;
+  }
+
+  const dense = new Set(sorted);
+  for (let time = sorted[0]; time <= sorted[sorted.length - 1]; time += step) {
+    dense.add(time);
+  }
+
+  return Array.from(dense).sort((left, right) => left - right);
+}
+
+function inferStepSeconds(times: number[], timeRange: TimeRange) {
+  if (times.every((time) => time % 86400 === 0)) {
+    return 86400;
+  }
+
+  const diffs = times
+    .slice(1)
+    .map((time, index) => time - times[index])
+    .filter((diff) => diff > 0)
+    .sort((left, right) => left - right);
+  const fallback = getFallbackStepSeconds(timeRange);
+  const smallestDiff = diffs[0];
+
+  if (!smallestDiff) {
+    return fallback;
+  }
+  if (smallestDiff > fallback && smallestDiff % fallback === 0) {
+    return fallback;
+  }
+
+  return smallestDiff;
+}
+
+function getFallbackStepSeconds(timeRange: TimeRange) {
+  return {
+    "1h": 5 * 60,
+    "1d": 60 * 60,
+    "1w": 6 * 60 * 60,
+    "1m": 24 * 60 * 60,
+    all: 24 * 60 * 60,
+  }[timeRange];
 }
 
 function addPanelSeries(
@@ -244,120 +347,79 @@ function getSeriesDisplayOptions(series: ChartSeries, seriesCount: number) {
   };
 }
 
-function resolveHoverSeries(
-  chart: IChartApi,
-  hoveredSeries: unknown,
-  param: MouseEventParams<Time>,
+function showHoverPriceLines(
+  hoverPriceLinesRef: MutableRefObject<Map<ISeriesApi<"Line" | "Area">, IPriceLine>>,
+  seriesData: MouseEventParams<Time>["seriesData"],
   seriesRefs: Map<string, ISeriesApi<"Line" | "Area">>,
 ) {
-  if (hoveredSeries && isPanelSeries(hoveredSeries, seriesRefs)) {
-    return hoveredSeries;
-  }
-
-  const nearestSeries = findNearestSeriesPoint(chart, param, seriesRefs);
-  if (nearestSeries) {
-    return nearestSeries;
-  }
-
-  const totalSeries = seriesRefs.get("Total");
-  if (totalSeries && param.seriesData.has(totalSeries)) {
-    return totalSeries;
-  }
+  const visibleSeries = new Set<ISeriesApi<"Line" | "Area">>();
 
   for (const series of seriesRefs.values()) {
-    if (param.seriesData.has(series)) {
-      return series;
-    }
-  }
-
-  return undefined;
-}
-
-function findNearestSeriesPoint(
-  chart: IChartApi,
-  param: MouseEventParams<Time>,
-  seriesRefs: Map<string, ISeriesApi<"Line" | "Area">>,
-) {
-  if (!param.point || param.time === undefined) {
-    return undefined;
-  }
-
-  const x = chart.timeScale().timeToCoordinate(param.time);
-  if (x === null) {
-    return undefined;
-  }
-
-  let nearest: { series: ISeriesApi<"Line" | "Area">; distance: number } | undefined;
-  for (const series of seriesRefs.values()) {
-    const value = getSeriesDataValue(param.seriesData.get(series));
+    const value = getSeriesDataValue(seriesData.get(series));
     if (value === undefined) {
       continue;
     }
 
-    const y = series.priceToCoordinate(value);
-    if (y === null) {
+    visibleSeries.add(series);
+    const color = getSeriesColor(series, seriesRefs);
+    const existing = hoverPriceLinesRef.current.get(series);
+
+    if (existing) {
+      existing.applyOptions({
+        price: value,
+        color,
+        axisLabelColor: color,
+        axisLabelTextColor: "#ffffff",
+        lineStyle: LineStyle.Dashed,
+        lineVisible: true,
+        axisLabelVisible: true,
+      });
       continue;
     }
 
-    const distance = Math.hypot(Number(x) - param.point.x, Number(y) - param.point.y);
-    if (!nearest || distance < nearest.distance) {
-      nearest = { series, distance };
-    }
-  }
-
-  return nearest && nearest.distance <= 12 ? nearest.series : undefined;
-}
-
-function showHoverPriceLine(
-  hoverPriceLineRef: MutableRefObject<HoverPriceLine | null>,
-  series: ISeriesApi<"Line" | "Area">,
-  value: number,
-  color: string,
-) {
-  if (hoverPriceLineRef.current?.series !== series) {
-    clearHoverPriceLine(hoverPriceLineRef);
-    hoverPriceLineRef.current = {
+    hoverPriceLinesRef.current.set(
       series,
-      line: series.createPriceLine({
+      series.createPriceLine({
         price: value,
         color,
         lineWidth: 1,
-        lineVisible: false,
+        lineStyle: LineStyle.Dashed,
+        lineVisible: true,
         axisLabelVisible: true,
         axisLabelColor: color,
         axisLabelTextColor: "#ffffff",
         title: "",
       }),
-    };
-    return;
+    );
   }
 
-  hoverPriceLineRef.current.line.applyOptions({
-    price: value,
-    color,
-    axisLabelColor: color,
-    axisLabelTextColor: "#ffffff",
-    lineVisible: false,
-    axisLabelVisible: true,
-  });
-}
-
-function clearHoverPriceLine(hoverPriceLineRef: MutableRefObject<HoverPriceLine | null>) {
-  if (!hoverPriceLineRef.current) {
-    return;
-  }
-
-  hoverPriceLineRef.current.series.removePriceLine(hoverPriceLineRef.current.line);
-  hoverPriceLineRef.current = null;
-}
-
-function isPanelSeries(value: unknown, seriesRefs: Map<string, ISeriesApi<"Line" | "Area">>): value is ISeriesApi<"Line" | "Area"> {
-  for (const series of seriesRefs.values()) {
-    if (series === value) {
-      return true;
+  for (const [series, line] of Array.from(hoverPriceLinesRef.current.entries())) {
+    if (!visibleSeries.has(series)) {
+      series.removePriceLine(line);
+      hoverPriceLinesRef.current.delete(series);
     }
   }
-  return false;
+}
+
+function removeHoverPriceLine(
+  hoverPriceLinesRef: MutableRefObject<Map<ISeriesApi<"Line" | "Area">, IPriceLine>>,
+  series: ISeriesApi<"Line" | "Area">,
+) {
+  const line = hoverPriceLinesRef.current.get(series);
+  if (!line) {
+    return;
+  }
+
+  series.removePriceLine(line);
+  hoverPriceLinesRef.current.delete(series);
+}
+
+function clearHoverPriceLines(hoverPriceLinesRef: MutableRefObject<Map<ISeriesApi<"Line" | "Area">, IPriceLine>>) {
+  for (const [series, line] of hoverPriceLinesRef.current.entries()) {
+    series.removePriceLine(line);
+  }
+
+  hoverPriceLinesRef.current.clear();
 }
 
 function getSeriesDataValue(data: unknown) {

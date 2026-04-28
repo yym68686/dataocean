@@ -4,6 +4,11 @@
 
 .do-app {
   min-height: 100vh;
+  grid-template-columns: 224px minmax(0, 1fr);
+}
+
+.do-app[data-inspector-open="true"] {
+  grid-template-columns: 224px minmax(0, 1fr) 320px;
 }
 
 .do-auth-shell {
@@ -157,6 +162,10 @@
 
 .do-topbar {
   align-items: flex-start;
+}
+
+.do-inspector-toggle {
+  min-width: 74px;
 }
 
 .do-live-line {
@@ -733,6 +742,11 @@
 }
 
 @media (max-width: 1120px) {
+  .do-app,
+  .do-app[data-inspector-open="true"] {
+    grid-template-columns: 184px minmax(0, 1fr);
+  }
+
   .do-span-3,
   .do-span-4 {
     grid-column: span 6;
@@ -748,6 +762,11 @@
 }
 
 @media (max-width: 760px) {
+  .do-app,
+  .do-app[data-inspector-open="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .do-topbar {
     display: grid;
   }

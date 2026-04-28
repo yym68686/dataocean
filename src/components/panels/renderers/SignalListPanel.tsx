@@ -1,6 +1,8 @@
 import type { ChartSpec } from "../../../domain/types";
 import { formatMetricValue } from "../../../lib/format";
 import { usePanelQuery } from "../../../hooks/usePanelQuery";
+import { useDisplayCurrency } from "../../../lib/displayCurrency";
+import { useI18n } from "../../../lib/i18n";
 
 type SignalListPanelProps = {
   panel: ChartSpec;
@@ -14,6 +16,8 @@ const signalLabels = [
 ];
 
 export function SignalListPanel({ panel }: SignalListPanelProps) {
+  const { intlLocale, t, tx } = useI18n();
+  const { currencyFormatOptions } = useDisplayCurrency();
   const { result } = usePanelQuery(panel);
   const rows = result?.rows.slice(-4) ?? [];
 
@@ -21,8 +25,8 @@ export function SignalListPanel({ panel }: SignalListPanelProps) {
     <div>
       <div className="mt-card-header">
         <div>
-          <h2 className="mt-card-title">{panel.title}</h2>
-          <p className="mt-card-subtitle">{panel.description}</p>
+          <h2 className="mt-card-title">{tx(panel.title)}</h2>
+          <p className="mt-card-subtitle">{tx(panel.description)}</p>
         </div>
       </div>
       <div>
@@ -34,13 +38,13 @@ export function SignalListPanel({ panel }: SignalListPanelProps) {
             <div className="mt-market-row" key={`${row.timestamp}-${index}`}>
               <div className="mt-market-icon">{signalLabels[index]?.slice(0, 1) ?? "S"}</div>
               <div>
-                <div className="mt-market-title">{signalLabels[index] ?? "Live signal"}</div>
-                <div className="mt-market-meta">{result?.meta.dataSource.name ?? "source"} · live</div>
+                <div className="mt-market-title">{tx(signalLabels[index]) || t("panel.liveSignal")}</div>
+                <div className="mt-market-meta">{tx(result?.meta.dataSource.name) || t("panel.source")} · {t("common.live")}</div>
               </div>
               <div className="mt-probability">
                 {result?.meta.metric.format === "percent"
                   ? `${Math.round(probability * 100)}%`
-                  : formatMetricValue(value, result?.meta.metric.format, result?.meta.unit)}
+                  : formatMetricValue(value, result?.meta.metric.format, result?.meta.unit, intlLocale, currencyFormatOptions)}
               </div>
             </div>
           );

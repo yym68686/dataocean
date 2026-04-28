@@ -1,4 +1,5 @@
 import type { DataSource, MetricDefinition } from "../domain/types";
+import { useI18n } from "../lib/i18n";
 
 type MetricsPageProps = {
   metrics: MetricDefinition[];
@@ -6,33 +7,34 @@ type MetricsPageProps = {
 };
 
 export function MetricsPage({ metrics, dataSources }: MetricsPageProps) {
+  const { t, tx, te } = useI18n();
   return (
     <section className="mt-grid">
       <article className="mt-card mt-span-12">
         <div className="mt-card-header">
           <div>
-            <h2 className="mt-card-title">Semantic Metrics</h2>
-            <p className="mt-card-subtitle">Metrics normalize raw source fields into reusable business and ops concepts.</p>
+            <h2 className="mt-card-title">{t("metrics.title")}</h2>
+            <p className="mt-card-subtitle">{t("metrics.subtitle")}</p>
           </div>
           <button className="mt-button" data-variant="primary" type="button">
-            New metric
+            {t("metrics.new")}
           </button>
         </div>
         {metrics.length === 0 ? (
           <div className="do-empty-state do-table-empty">
-            <h2>No real metrics</h2>
-            <p>Metrics will be created after real source fields are available.</p>
+            <h2>{t("metrics.emptyTitle")}</h2>
+            <p>{t("metrics.emptyText")}</p>
           </div>
         ) : (
           <table className="mt-table">
             <thead>
               <tr>
-                <th>Metric</th>
-                <th>Source</th>
-                <th>Field</th>
-                <th>Aggregation</th>
-                <th>Format</th>
-                <th>Dimensions</th>
+                <th>{t("metrics.metric")}</th>
+                <th>{t("metrics.source")}</th>
+                <th>{t("metrics.field")}</th>
+                <th>{t("metrics.aggregation")}</th>
+                <th>{t("metrics.format")}</th>
+                <th>{t("metrics.dimensions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -41,14 +43,14 @@ export function MetricsPage({ metrics, dataSources }: MetricsPageProps) {
                 return (
                   <tr key={metric.id}>
                     <td>
-                      <strong>{metric.name}</strong>
+                      <strong>{tx(metric.name)}</strong>
                       <div className="do-table-subtext">{metric.key}</div>
                     </td>
-                    <td>{source?.name ?? metric.dataSourceId}</td>
-                    <td>{metric.field}</td>
-                    <td>{metric.aggregation}</td>
-                    <td>{metric.format}</td>
-                    <td>{metric.dimensions.join(", ") || "none"}</td>
+                    <td>{tx(source?.name) || metric.dataSourceId}</td>
+                    <td>{tx(metric.field)}</td>
+                    <td>{te("aggregation", metric.aggregation)}</td>
+                    <td>{te("format", metric.format)}</td>
+                    <td>{metric.dimensions.map((dimension) => tx(dimension)).join(", ") || t("common.none")}</td>
                   </tr>
                 );
               })}

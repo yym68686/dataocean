@@ -1,7 +1,9 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { apiClient } from "../api/client";
 import type { ManualRevenueEntry } from "../domain/types";
-import { formatMetricValue } from "../lib/format";
+import { formatDateTime, formatMetricValue, type CurrencyFormatOptions } from "../lib/format";
+import { useDisplayCurrency } from "../lib/displayCurrency";
+import { useI18n } from "../lib/i18n";
 
 type ManualRevenueStatus = {
   configured: boolean;
@@ -21,6 +23,16 @@ type ManualRevenueForm = {
   note: string;
 };
 
+type ManualRevenueCache = {
+  status: ManualRevenueStatus;
+  entries: ManualRevenueEntry[];
+  fetchedAt: number;
+};
+
+const MANUAL_REVENUE_CACHE_TTL_MS = 60_000;
+let manualRevenueCache: ManualRevenueCache | null = null;
+let manualRevenuePromise: Promise<ManualRevenueCache> | null = null;
+
 const emptyForm = (): ManualRevenueForm => ({
   channel: "WeChat Pay",
   amount: "",
@@ -30,6 +42,8 @@ const emptyForm = (): ManualRevenueForm => ({
 });
 
 export function ManualRevenuePage() {
+  const { intlLocale, t } = useI18n();
+  const { currencyFormatOptions } = useDisplayCurrency();
   const [entries, setEntries] = useState<ManualRevenueEntry[]>([]);
   const [status, setStatus] = useState<ManualRevenueStatus | null>(null);
   const [form, setForm] = useState<ManualRevenueForm>(() => emptyForm());
@@ -45,21 +59,33 @@ export function ManualRevenuePage() {
   );
 
   useEffect(() => {
-    void loadManualRevenue();
+    void loadManualRevenue({ preferCache: true });
   }, []);
 
-  async function loadManualRevenue() {
-    setLoading(true);
+  async function loadManualRevenue({ force = false, preferCache = false }: { force?: boolean; preferCache?: boolean } = {}) {
+    const cached = getFreshManualRevenueCache();
+    if (!force && cached) {
+      setStatus(cached.status);
+      setEntries(cached.entries);
+      setLoading(false);
+      setError("");
+      return;
+    }
+
+    if (preferCache && manualRevenueCache) {
+      setStatus(manualRevenueCache.status);
+      setEntries(manualRevenueCache.entries);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError("");
     try {
-      const [statusResult, entriesResult] = await Promise.all([
-        apiClient.getManualRevenueStatus(),
-        apiClient.listManualRevenueEntries({ limit: 100 }),
-      ]);
-      setStatus(statusResult);
-      setEntries(entriesResult.entries);
+      const next = await fetchManualRevenue(force);
+      setStatus(next.status);
+      setEntries(next.entries);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Could not load manual revenue");
+      setError(loadError instanceof Error ? loadError.message : t("manual.loadError"));
     } finally {
       setLoading(false);
     }
@@ -82,24 +108,26 @@ export function ManualRevenuePage() {
 
       if (editingId) {
         await apiClient.updateManualRevenueEntry(editingId, payload);
-        setMessage("Entry updated.");
+        setMessage(t("manual.entryUpdated"));
       } else {
         await apiClient.createManualRevenueEntry(payload);
-        setMessage("Entry added.");
+        setMessage(t("manual.entryAdded"));
       }
 
       setEditingId(null);
       setForm(emptyForm());
-      await loadManualRevenue();
+      await loadManualRevenue({ force: true });
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Could not save entry");
+      setError(saveError instanceof Error ? saveError.message : t("manual.saveError"));
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(entry: ManualRevenueEntry) {
-    const confirmed = window.confirm(`Delete ${entry.channel} ${formatRawAmount(entry)}?`);
+    const confirmed = window.confirm(t("manual.confirmDelete", {
+      entry: `${entry.channel} ${formatRawAmount(entry, intlLocale, currencyFormatOptions)}`,
+    }));
     if (!confirmed) {
       return;
     }
@@ -108,10 +136,10 @@ export function ManualRevenuePage() {
     setMessage("");
     try {
       await apiClient.deleteManualRevenueEntry(entry.id);
-      setMessage("Entry deleted.");
-      await loadManualRevenue();
+      setMessage(t("manual.entryDeleted"));
+      await loadManualRevenue({ force: true });
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Could not delete entry");
+      setError(deleteError instanceof Error ? deleteError.message : t("manual.deleteError"));
     }
   }
 
@@ -138,25 +166,29 @@ export function ManualRevenuePage() {
       <article className="mt-card mt-span-12">
         <div className="mt-card-header">
           <div>
-            <h2 className="mt-card-title">Manual Revenue</h2>
-            <p className="mt-card-subtitle">Offline transfers, wallet payments, crypto receipts, and other manual income.</p>
+            <h2 className="mt-card-title">{t("manual.title")}</h2>
+            <p className="mt-card-subtitle">{t("manual.subtitle")}</p>
           </div>
           <span className="mt-badge" data-intent="positive">
-            live
+            {t("common.live")}
           </span>
         </div>
 
         <div className="do-admin-stats">
           <div>
-            <span>Today</span>
-            <strong>{formatMetricValue(status?.todayRevenue ?? 0, "currency", status?.reportingCurrency ?? "USD")}</strong>
+            <span>{t("manual.today")}</span>
+            <strong>
+              {formatMetricValue(status?.todayRevenue ?? 0, "currency", status?.reportingCurrency ?? "USD", intlLocale, currencyFormatOptions)}
+            </strong>
           </div>
           <div>
-            <span>Total</span>
-            <strong>{formatMetricValue(status?.totalRevenue ?? 0, "currency", status?.reportingCurrency ?? "USD")}</strong>
+            <span>{t("manual.total")}</span>
+            <strong>
+              {formatMetricValue(status?.totalRevenue ?? 0, "currency", status?.reportingCurrency ?? "USD", intlLocale, currencyFormatOptions)}
+            </strong>
           </div>
           <div>
-            <span>Entries</span>
+            <span>{t("manual.entries")}</span>
             <strong>{status?.entryCount ?? entries.length}</strong>
           </div>
         </div>
@@ -167,7 +199,7 @@ export function ManualRevenuePage() {
 
         <form className="do-manual-form" onSubmit={(event) => void handleSubmit(event)}>
           <label>
-            <span>Amount</span>
+            <span>{t("manual.amount")}</span>
             <input
               min="0"
               required
@@ -178,7 +210,7 @@ export function ManualRevenuePage() {
             />
           </label>
           <label>
-            <span>Currency</span>
+            <span>{t("manual.currency")}</span>
             <input
               maxLength={12}
               required
@@ -187,7 +219,7 @@ export function ManualRevenuePage() {
             />
           </label>
           <label>
-            <span>Channel</span>
+            <span>{t("manual.channel")}</span>
             <input
               list="manual-revenue-channels"
               maxLength={80}
@@ -202,7 +234,7 @@ export function ManualRevenuePage() {
             </datalist>
           </label>
           <label>
-            <span>Received At</span>
+            <span>{t("manual.receivedAt")}</span>
             <input
               required
               type="datetime-local"
@@ -211,7 +243,7 @@ export function ManualRevenuePage() {
             />
           </label>
           <label className="do-manual-note">
-            <span>Note</span>
+            <span>{t("manual.note")}</span>
             <textarea
               rows={3}
               value={form.note}
@@ -221,11 +253,11 @@ export function ManualRevenuePage() {
           <div className="do-manual-actions">
             {editingId ? (
               <button className="mt-button" onClick={cancelEditing} type="button">
-                Cancel
+                {t("common.cancel")}
               </button>
             ) : null}
             <button className="mt-button" data-variant="primary" disabled={saving} type="submit">
-              {saving ? "Saving" : editingId ? "Save entry" : "Add entry"}
+              {saving ? t("manual.saving") : editingId ? t("manual.saveEntry") : t("manual.addEntry")}
             </button>
           </div>
         </form>
@@ -234,54 +266,56 @@ export function ManualRevenuePage() {
       <article className="mt-card mt-span-12">
         <div className="mt-card-header">
           <div>
-            <h2 className="mt-card-title">Entries</h2>
-            <p className="mt-card-subtitle">{status?.lastReceivedAt ? `Last received ${formatDate(status.lastReceivedAt)}` : "Manual records"}</p>
+            <h2 className="mt-card-title">{t("manual.entries")}</h2>
+            <p className="mt-card-subtitle">
+              {status?.lastReceivedAt ? t("manual.lastReceived", { time: formatDateTime(status.lastReceivedAt, intlLocale) }) : t("manual.records")}
+            </p>
           </div>
-          <button className="mt-button" onClick={() => void loadManualRevenue()} type="button">
-            Refresh
+          <button className="mt-button" onClick={() => void loadManualRevenue({ force: true })} type="button">
+            {t("common.refresh")}
           </button>
         </div>
 
         {loading ? (
           <div className="do-empty-state do-table-empty">
-            <h2>Loading entries</h2>
-            <p>Fetching manual revenue records.</p>
+            <h2>{t("manual.loadingTitle")}</h2>
+            <p>{t("manual.loadingText")}</p>
           </div>
         ) : entries.length === 0 ? (
           <div className="do-empty-state do-table-empty">
-            <h2>No manual entries</h2>
-            <p>Manual revenue records will appear after they are added.</p>
+            <h2>{t("manual.emptyTitle")}</h2>
+            <p>{t("manual.emptyText")}</p>
           </div>
         ) : (
           <div className="do-table-scroll">
             <table className="mt-table">
               <thead>
                 <tr>
-                  <th>Received</th>
-                  <th>Channel</th>
-                  <th>Amount</th>
-                  <th>Note</th>
-                  <th>Created By</th>
-                  <th>Action</th>
+                  <th>{t("manual.received")}</th>
+                  <th>{t("manual.channel")}</th>
+                  <th>{t("manual.amount")}</th>
+                  <th>{t("manual.note")}</th>
+                  <th>{t("manual.createdBy")}</th>
+                  <th>{t("common.action")}</th>
                 </tr>
               </thead>
               <tbody>
                 {entries.map((entry) => (
                   <tr key={entry.id}>
-                    <td>{formatDate(entry.receivedAt)}</td>
+                    <td>{formatDateTime(entry.receivedAt, intlLocale)}</td>
                     <td>{entry.channel}</td>
                     <td>
-                      <strong>{formatRawAmount(entry)}</strong>
+                      <strong>{formatRawAmount(entry, intlLocale, currencyFormatOptions)}</strong>
                     </td>
                     <td>{entry.note || "--"}</td>
                     <td>{entry.createdByName ?? entry.createdByEmail ?? "--"}</td>
                     <td>
                       <div className="do-row-actions">
                         <button className="mt-button" onClick={() => startEditing(entry)} type="button">
-                          Edit
+                          {t("common.edit")}
                         </button>
                         <button className="mt-button" data-variant="danger" onClick={() => void handleDelete(entry)} type="button">
-                          Delete
+                          {t("common.delete")}
                         </button>
                       </div>
                     </td>
@@ -296,6 +330,43 @@ export function ManualRevenuePage() {
   );
 }
 
+export function clearManualRevenuePageCache() {
+  manualRevenueCache = null;
+  manualRevenuePromise = null;
+}
+
+function getFreshManualRevenueCache() {
+  if (!manualRevenueCache) {
+    return null;
+  }
+
+  return Date.now() - manualRevenueCache.fetchedAt < MANUAL_REVENUE_CACHE_TTL_MS ? manualRevenueCache : null;
+}
+
+async function fetchManualRevenue(force: boolean) {
+  if (!force && manualRevenuePromise) {
+    return manualRevenuePromise;
+  }
+
+  manualRevenuePromise = Promise.all([
+    apiClient.getManualRevenueStatus(),
+    apiClient.listManualRevenueEntries({ limit: 100 }),
+  ])
+    .then(([statusResult, entriesResult]) => {
+      manualRevenueCache = {
+        status: statusResult,
+        entries: entriesResult.entries,
+        fetchedAt: Date.now(),
+      };
+      return manualRevenueCache;
+    })
+    .finally(() => {
+      manualRevenuePromise = null;
+    });
+
+  return manualRevenuePromise;
+}
+
 function toDateTimeLocal(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -305,16 +376,6 @@ function toDateTimeLocal(value: string) {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-function formatRawAmount(entry: ManualRevenueEntry) {
-  return `${trimDecimal(entry.amount)} ${entry.currency}`;
-}
-
-function trimDecimal(value: number) {
-  return Number(value).toLocaleString("en-US", {
-    maximumFractionDigits: 8,
-  });
-}
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleString();
+function formatRawAmount(entry: ManualRevenueEntry, locale: string, currencyFormatOptions: CurrencyFormatOptions) {
+  return formatMetricValue(entry.amount, "currency", entry.currency, locale, currencyFormatOptions);
 }

@@ -1,19 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient, clearStoredToken, getStoredToken, setStoredToken, type AuthResponse } from "./api/client";
 import { alerts, dashboard, dashboards, dataSources, metrics, templates } from "./data/seed";
-import { sectionLabels, timeRanges } from "./domain/constants";
+import { timeRanges } from "./domain/constants";
 import type { AppData, AppSection, AuthUser, ThemeMode, TimeRange } from "./domain/types";
 import { AlertsPage } from "./pages/AlertsPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DataSourcesPage } from "./pages/DataSourcesPage";
 import { LoginPage } from "./pages/LoginPage";
-import { ManualRevenuePage } from "./pages/ManualRevenuePage";
+import { ManualRevenuePage, clearManualRevenuePageCache } from "./pages/ManualRevenuePage";
 import { MetricsPage } from "./pages/MetricsPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { Inspector } from "./components/Inspector";
 import { setQueryCatalog } from "./services/queryEngine";
+import { clearPanelQueryCache } from "./hooks/usePanelQuery";
+import { useDisplayCurrency } from "./lib/displayCurrency";
+import { useI18n } from "./lib/i18n";
 
 const sections: AppSection[] = [
   "command",
@@ -24,8 +27,8 @@ const sections: AppSection[] = [
   "settings",
 ];
 
-const providerSections: AppSection[] = ["provider-zhupay", "provider-creem", "provider-manual"];
-const dashboardProviderSections: AppSection[] = ["provider-zhupay", "provider-creem"];
+const providerSections: AppSection[] = ["provider-zhupay", "provider-creem", "provider-sub2api", "provider-manual"];
+const dashboardProviderSections: AppSection[] = ["provider-zhupay", "provider-creem", "provider-sub2api"];
 const adminSections: AppSection[] = ["admin-users"];
 
 const fallbackAppData: AppData = {
@@ -38,6 +41,8 @@ const fallbackAppData: AppData = {
 };
 
 export default function App() {
+  const { t, tx, te, toggleLocale } = useI18n();
+  const { displayCurrency, refreshCurrencySettings, setDisplayCurrency, supportedDisplayCurrencies } = useDisplayCurrency();
   const [activeSection, setActiveSection] = useState<AppSection>("command");
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const stored = window.localStorage.getItem("dataocean-theme");
@@ -50,6 +55,7 @@ export default function App() {
   const [appData, setAppData] = useState<AppData>(fallbackAppData);
   const [issuedApiKey, setIssuedApiKey] = useState<string | undefined>();
   const [appError, setAppError] = useState("");
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [activeRange, setActiveRange] = useState<TimeRange>(fallbackAppData.dashboard.defaultTimeRange);
   const [selectedPanelId, setSelectedPanelId] = useState(
     fallbackAppData.dashboard.panels[4]?.id ?? fallbackAppData.dashboard.panels[0]?.id,
@@ -63,6 +69,7 @@ export default function App() {
     () => getDashboardForSection(activeSection, dashboards, appData.dashboard),
     [activeSection, appData.dashboard, dashboards],
   );
+  const previousDashboardIdRef = useRef(activeDashboard.id);
   const selectedPanel = useMemo(
     () => activeDashboard.panels.find((panel) => panel.id === selectedPanelId) ?? activeDashboard.panels[0],
     [activeDashboard.panels, selectedPanelId],
@@ -98,9 +105,10 @@ export default function App() {
         }
       } catch (error) {
         clearStoredToken();
+        clearProviderPageCaches();
         if (!cancelled) {
           setAuthUser(null);
-          setAppError(error instanceof Error ? error.message : "Could not restore session");
+          setAppError(error instanceof Error ? error.message : t("app.restoreFailed"));
         }
       }
     }
@@ -113,9 +121,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const dashboardChanged = previousDashboardIdRef.current !== activeDashboard.id;
     if (!activeDashboard.panels.some((panel) => panel.id === selectedPanelId)) {
       setSelectedPanelId(activeDashboard.panels[0]?.id);
+    }
+    if (dashboardChanged) {
       setActiveRange(activeDashboard.defaultTimeRange);
+      previousDashboardIdRef.current = activeDashboard.id;
     }
   }, [activeDashboard, selectedPanelId]);
 
@@ -125,6 +137,14 @@ export default function App() {
     }
   }, [activeSection, authUser]);
 
+  useEffect(() => {
+    if (authUser) {
+      refreshCurrencySettings().catch(() => {
+        // Currency settings are display-only; keep local fallback rates if the API is unavailable.
+      });
+    }
+  }, [authUser, refreshCurrencySettings]);
+
   async function loadAppData() {
     const state = await apiClient.getState();
     setAppData(state);
@@ -133,6 +153,7 @@ export default function App() {
   }
 
   async function handleAuthenticated(response: AuthResponse) {
+    clearProviderPageCaches();
     setStoredToken(response.token);
     setAuthUser(response.user);
     setIssuedApiKey(response.apiKey);
@@ -146,6 +167,7 @@ export default function App() {
     } catch {
       // Local logout should still clear the browser session if the API call fails.
     }
+    clearProviderPageCaches();
     clearStoredToken();
     setAuthUser(null);
     setIssuedApiKey(undefined);
@@ -158,7 +180,7 @@ export default function App() {
       setIssuedApiKey(result.apiKey);
       setAppError("");
     } catch (error) {
-      setAppError(error instanceof Error ? error.message : "Could not rotate API key");
+      setAppError(error instanceof Error ? error.message : t("settings.rotateFailed"));
     }
   }
 
@@ -174,7 +196,7 @@ export default function App() {
             <span className="mt-brand-mark" aria-hidden="true" />
             <div>
               <h1>DataOcean</h1>
-              <p>Restoring session...</p>
+              <p>{t("app.restoringSession")}</p>
             </div>
           </div>
         </section>
@@ -188,11 +210,11 @@ export default function App() {
 
   const isAdmin = authUser.role === "admin";
   const isDashboardSection = activeSection === "command" || dashboardProviderSections.includes(activeSection) || activeSection === "dashboards";
-  const currentTitle = isDashboardSection ? activeDashboard.name : sectionLabels[activeSection];
+  const currentTitle = isDashboardSection ? tx(activeDashboard.name) : t(`section.${activeSection}`);
   const inspectorPanel = isDashboardSection ? selectedPanel : undefined;
 
   return (
-    <div className="mt-app do-app">
+    <div className="mt-app do-app" data-inspector-open={inspectorOpen}>
       <aside className="mt-sidebar do-sidebar">
         <button className="do-brand-button" onClick={() => setActiveSection("command")} type="button">
           <span className="mt-brand-mark" aria-hidden="true" />
@@ -209,13 +231,13 @@ export default function App() {
               type="button"
             >
               <span className="mt-dot" />
-              <span>{sectionLabels[section]}</span>
+              <span>{t(`section.${section}`)}</span>
             </button>
           ))}
         </nav>
 
         <nav className="mt-nav do-admin-nav" aria-label="Providers">
-          <div className="do-nav-heading">Providers</div>
+          <div className="do-nav-heading">{t("nav.providers")}</div>
           {providerSections.map((section) => (
             <button
               className="mt-nav-item do-nav-button"
@@ -225,14 +247,14 @@ export default function App() {
               type="button"
             >
               <span className="mt-dot" />
-              <span>{sectionLabels[section]}</span>
+              <span>{t(`section.${section}`)}</span>
             </button>
           ))}
         </nav>
 
         {isAdmin ? (
           <nav className="mt-nav do-admin-nav" aria-label="Admin">
-            <div className="do-nav-heading">Admin</div>
+            <div className="do-nav-heading">{t("nav.admin")}</div>
             {adminSections.map((section) => (
               <button
                 className="mt-nav-item do-nav-button"
@@ -242,16 +264,16 @@ export default function App() {
                 type="button"
               >
                 <span className="mt-dot" />
-                <span>{sectionLabels[section]}</span>
+                <span>{t(`section.${section}`)}</span>
               </button>
             ))}
           </nav>
         ) : null}
 
         <div className="do-sidebar-card">
-          <div className="do-sidebar-card-label">Connected</div>
-          <div className="do-sidebar-card-value">{appData.dataSources.length} sources</div>
-          <div className="do-sidebar-card-meta">{authUser.role} workspace</div>
+          <div className="do-sidebar-card-label">{t("sidebar.connected")}</div>
+          <div className="do-sidebar-card-value">{t("sidebar.sources", { count: appData.dataSources.length })}</div>
+          <div className="do-sidebar-card-meta">{t("sidebar.workspace", { role: te("role", authUser.role) })}</div>
         </div>
       </aside>
 
@@ -259,20 +281,36 @@ export default function App() {
         <header className="mt-topbar do-topbar">
           <div>
             <div className="do-live-line">
-              <span className="do-live-pill">Live</span>
-              <span>{appError || "Universal data terminal"}</span>
+              <span className="do-live-pill">{t("common.live")}</span>
+              <span>{appError || t("app.universalTerminal")}</span>
             </div>
             <h1 className="do-page-title">{currentTitle}</h1>
             <p className="mt-card-subtitle">
-              Custom sources, semantic metrics, ChartSpec panels, and market-style real-time display.
+              {t("app.subtitle")}
             </p>
           </div>
 
           <div className="mt-toolbar">
             <button className="mt-button" onClick={toggleTheme} type="button">
-              {theme === "light" ? "Dark mode" : "Light mode"}
+              {theme === "light" ? t("common.darkMode") : t("common.lightMode")}
             </button>
-            <div className="mt-segmented" role="group" aria-label="Global time range">
+            <button className="mt-button" onClick={toggleLocale} type="button">
+              {t("app.language")}
+            </button>
+            <div className="mt-segmented" role="group" aria-label={t("app.currency")}>
+              {supportedDisplayCurrencies.map((currency) => (
+                <button
+                  className="mt-segment"
+                  data-active={displayCurrency === currency}
+                  key={currency}
+                  onClick={() => setDisplayCurrency(currency)}
+                  type="button"
+                >
+                  {currency}
+                </button>
+              ))}
+            </div>
+            <div className="mt-segmented" role="group" aria-label={t("dashboard.timeRange")}>
               {timeRanges.map((range) => (
                 <button
                   className="mt-segment"
@@ -287,9 +325,12 @@ export default function App() {
             </div>
             {isAdmin ? (
               <button className="mt-button" data-variant="primary" type="button">
-                New panel
+                {t("app.newPanel")}
               </button>
             ) : null}
+            <button className="mt-button do-inspector-toggle" onClick={() => setInspectorOpen((value) => !value)} type="button">
+              {inspectorOpen ? t("app.hideContext") : t("app.context")}
+            </button>
           </div>
         </header>
 
@@ -320,14 +361,21 @@ export default function App() {
         ) : null}
       </main>
 
-      <Inspector
-        activeSection={activeSection}
-        dataSources={appData.dataSources}
-        metrics={appData.metrics}
-        panel={inspectorPanel}
-      />
+      {inspectorOpen ? (
+        <Inspector
+          activeSection={activeSection}
+          dataSources={appData.dataSources}
+          metrics={appData.metrics}
+          panel={inspectorPanel}
+        />
+      ) : null}
     </div>
   );
+}
+
+function clearProviderPageCaches() {
+  clearPanelQueryCache();
+  clearManualRevenuePageCache();
 }
 
 function getDashboardForSection(section: AppSection, dashboards: typeof fallbackAppData.dashboards, fallback: typeof fallbackAppData.dashboard) {
@@ -336,6 +384,7 @@ function getDashboardForSection(section: AppSection, dashboards: typeof fallback
     dashboards: "dashboard-command-center",
     "provider-zhupay": "dashboard-zhupay-revenue",
     "provider-creem": "dashboard-creem-revenue",
+    "provider-sub2api": "dashboard-sub2api-revenue",
   };
   const dashboardId = dashboardIds[section];
 

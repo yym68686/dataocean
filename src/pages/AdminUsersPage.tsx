@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "../api/client";
 import type { AuthUser } from "../domain/types";
+import { formatDateTime } from "../lib/format";
+import { useI18n } from "../lib/i18n";
 
 type AdminUsersPageProps = {
   currentUser: AuthUser;
 };
 
 export function AdminUsersPage({ currentUser }: AdminUsersPageProps) {
+  const { intlLocale, t, te } = useI18n();
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
@@ -36,7 +39,7 @@ export function AdminUsersPage({ currentUser }: AdminUsersPageProps) {
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "Could not load users");
+          setError(loadError instanceof Error ? loadError.message : t("admin.users.loadError"));
         }
       } finally {
         if (!cancelled) {
@@ -54,11 +57,11 @@ export function AdminUsersPage({ currentUser }: AdminUsersPageProps) {
 
   async function handleDeleteUser(user: AuthUser) {
     if (user.id === currentUser.id) {
-      setError("Administrators cannot delete their own account.");
+      setError(t("admin.users.selfDeleteError"));
       return;
     }
 
-    const confirmed = window.confirm(`Delete ${user.email}? This will revoke their sessions and API key.`);
+    const confirmed = window.confirm(t("admin.users.confirmDelete", { email: user.email }));
     if (!confirmed) {
       return;
     }
@@ -70,9 +73,9 @@ export function AdminUsersPage({ currentUser }: AdminUsersPageProps) {
     try {
       await apiClient.deleteAdminUser(user.id);
       setUsers((items) => items.filter((item) => item.id !== user.id));
-      setMessage(`${user.email} was deleted.`);
+      setMessage(t("admin.users.deleted", { email: user.email }));
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Could not delete user");
+      setError(deleteError instanceof Error ? deleteError.message : t("admin.users.deleteError"));
     } finally {
       setDeletingUserId(null);
     }
@@ -83,25 +86,25 @@ export function AdminUsersPage({ currentUser }: AdminUsersPageProps) {
       <article className="mt-card mt-span-12">
         <div className="mt-card-header">
           <div>
-            <h2 className="mt-card-title">User Management</h2>
-            <p className="mt-card-subtitle">Admin-only access control, API key scope, and account removal.</p>
+            <h2 className="mt-card-title">{t("admin.users.title")}</h2>
+            <p className="mt-card-subtitle">{t("admin.users.subtitle")}</p>
           </div>
           <span className="mt-badge" data-intent="positive">
-            admin
+            {te("role", "admin")}
           </span>
         </div>
 
         <div className="do-admin-stats">
           <div>
-            <span>Total</span>
+            <span>{t("admin.users.total")}</span>
             <strong>{stats.total}</strong>
           </div>
           <div>
-            <span>Admins</span>
+            <span>{t("admin.users.admins")}</span>
             <strong>{stats.admins}</strong>
           </div>
           <div>
-            <span>Members</span>
+            <span>{t("admin.users.members")}</span>
             <strong>{stats.members}</strong>
           </div>
         </div>
@@ -111,26 +114,26 @@ export function AdminUsersPage({ currentUser }: AdminUsersPageProps) {
 
         {loading ? (
           <div className="do-empty-state do-table-empty">
-            <h2>Loading users</h2>
-            <p>Fetching the current workspace accounts.</p>
+            <h2>{t("admin.users.loadingTitle")}</h2>
+            <p>{t("admin.users.loadingText")}</p>
           </div>
         ) : users.length === 0 ? (
           <div className="do-empty-state do-table-empty">
-            <h2>No users</h2>
-            <p>Accounts will appear after registration.</p>
+            <h2>{t("admin.users.emptyTitle")}</h2>
+            <p>{t("admin.users.emptyText")}</p>
           </div>
         ) : (
           <div className="do-table-scroll">
             <table className="mt-table">
               <thead>
                 <tr>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>API Scope</th>
-                  <th>API Key</th>
-                  <th>Created</th>
-                  <th>Updated</th>
-                  <th>Action</th>
+                  <th>{t("admin.users.user")}</th>
+                  <th>{t("settings.role")}</th>
+                  <th>{t("admin.users.apiScope")}</th>
+                  <th>{t("admin.users.apiKey")}</th>
+                  <th>{t("admin.users.created")}</th>
+                  <th>{t("admin.users.updated")}</th>
+                  <th>{t("common.action")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -145,13 +148,13 @@ export function AdminUsersPage({ currentUser }: AdminUsersPageProps) {
                       </td>
                       <td>
                         <span className="mt-badge" data-intent={user.role === "admin" ? "positive" : undefined}>
-                          {user.role}
+                          {te("role", user.role)}
                         </span>
                       </td>
-                      <td>{user.apiKeyScope}</td>
+                      <td>{te("scope", user.apiKeyScope)}</td>
                       <td>{user.apiKeyPrefix}...</td>
-                      <td>{formatUserDate(user.createdAt)}</td>
-                      <td>{formatUserDate(user.updatedAt)}</td>
+                      <td>{formatDateTime(user.createdAt, intlLocale)}</td>
+                      <td>{formatDateTime(user.updatedAt, intlLocale)}</td>
                       <td>
                         <button
                           className="mt-button"
@@ -160,7 +163,7 @@ export function AdminUsersPage({ currentUser }: AdminUsersPageProps) {
                           onClick={() => void handleDeleteUser(user)}
                           type="button"
                         >
-                          {isCurrentUser ? "Current user" : deletingUserId === user.id ? "Deleting" : "Delete"}
+                          {isCurrentUser ? t("admin.users.currentUser") : deletingUserId === user.id ? t("common.deleting") : t("common.delete")}
                         </button>
                       </td>
                     </tr>
@@ -173,8 +176,4 @@ export function AdminUsersPage({ currentUser }: AdminUsersPageProps) {
       </article>
     </section>
   );
-}
-
-function formatUserDate(value: string) {
-  return new Date(value).toLocaleString();
 }

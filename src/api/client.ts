@@ -98,6 +98,15 @@ export const apiClient = {
     return request<AppData>("/api/state");
   },
 
+  async getCurrencySettings() {
+    return request<{
+      reportingCurrency: string;
+      supportedDisplayCurrencies: string[];
+      defaultDisplayCurrency: string;
+      rates: Record<string, Record<string, number>>;
+    }>("/api/currency");
+  },
+
   async executePanel(panel: ChartSpec) {
     return request<QueryResult>("/api/query/panel", {
       method: "POST",
@@ -142,6 +151,23 @@ export const apiClient = {
       warnings: string[];
       lastReceivedAt?: string | null;
     }>("/api/connectors/manual-revenue/status");
+  },
+
+  async getSub2ApiStatus() {
+    return request<{
+      configured: boolean;
+      baseUrl: string;
+      channels: string[];
+      profitRate: number;
+      currency: string;
+      totalCost?: number;
+      totalProfit?: number;
+      todayCost?: number;
+      todayProfit?: number;
+      requestCount?: number;
+      channelCount?: number;
+      lastError?: string | null;
+    }>("/api/connectors/sub2api/status");
   },
 
   async listManualRevenueEntries(input: { limit?: number } = {}) {
@@ -204,6 +230,15 @@ export const apiClient = {
     }>("/api/connectors/creem/sync", {
       method: "POST",
       body: JSON.stringify(input),
+    });
+  },
+
+  async syncSub2Api() {
+    return request<{
+      ok: boolean;
+      summary: unknown;
+    }>("/api/connectors/sub2api/sync", {
+      method: "POST",
     });
   },
 };

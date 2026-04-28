@@ -1,24 +1,29 @@
 import { useState } from "react";
 import { apiClient } from "../api/client";
 import type { DataSource } from "../domain/types";
+import { formatMetricValue } from "../lib/format";
 import { queryEngine } from "../services/queryEngine";
+import { useDisplayCurrency } from "../lib/displayCurrency";
+import { useI18n } from "../lib/i18n";
 
 type DataSourcesPageProps = {
   dataSources: DataSource[];
 };
 
 export function DataSourcesPage({ dataSources }: DataSourcesPageProps) {
+  const { intlLocale, t, tx, te } = useI18n();
+  const { currencyFormatOptions } = useDisplayCurrency();
   const [testResults, setTestResults] = useState<Record<string, string>>({});
 
   async function testSource(source: DataSource) {
-    setTestResults((current) => ({ ...current, [source.id]: "Testing..." }));
+    setTestResults((current) => ({ ...current, [source.id]: t("common.testing") }));
     if (source.kind === "zhupay") {
       const status = await apiClient.getZhupayStatus();
       setTestResults((current) => ({
         ...current,
         [source.id]: status.configured
-          ? `Zhupay configured · ${status.orderCount} orders cached`
-          : "Zhupay credentials are not configured",
+          ? t("datasources.zhupayConfigured", { count: status.orderCount })
+          : t("datasources.zhupayMissing"),
       }));
       return;
     }
@@ -28,8 +33,8 @@ export function DataSourcesPage({ dataSources }: DataSourcesPageProps) {
       setTestResults((current) => ({
         ...current,
         [source.id]: status.configured
-          ? `Creem ${status.mode} configured · ${status.transactionCount} transactions cached`
-          : "Creem API key is not configured",
+          ? t("datasources.creemConfigured", { mode: status.mode, count: status.transactionCount })
+          : t("datasources.creemMissing"),
       }));
       return;
     }
@@ -38,7 +43,21 @@ export function DataSourcesPage({ dataSources }: DataSourcesPageProps) {
       const status = await apiClient.getManualRevenueStatus();
       setTestResults((current) => ({
         ...current,
-        [source.id]: `Manual entry source ready · ${status.entryCount} entries`,
+        [source.id]: t("datasources.manualReady", { count: status.entryCount }),
+      }));
+      return;
+    }
+
+    if (source.kind === "sub2api") {
+      const status = await apiClient.getSub2ApiStatus();
+      setTestResults((current) => ({
+        ...current,
+        [source.id]: status.configured
+          ? t("datasources.sub2apiConfigured", {
+              count: status.channelCount ?? status.channels.length,
+              profit: formatMetricValue(status.totalProfit ?? 0, "currency", status.currency, intlLocale, currencyFormatOptions),
+            })
+          : t("datasources.sub2apiMissing"),
       }));
       return;
     }
@@ -55,53 +74,53 @@ export function DataSourcesPage({ dataSources }: DataSourcesPageProps) {
       <article className="mt-card mt-span-12">
         <div className="mt-card-header">
           <div>
-            <h2 className="mt-card-title">Data Sources</h2>
-            <p className="mt-card-subtitle">Connect APIs, databases, metrics systems, webhooks, and SaaS tools.</p>
+            <h2 className="mt-card-title">{t("datasources.title")}</h2>
+            <p className="mt-card-subtitle">{t("datasources.subtitle")}</p>
           </div>
           <button className="mt-button" data-variant="primary" type="button">
-            Add source
+            {t("datasources.add")}
           </button>
         </div>
         <div className="do-source-grid">
           {dataSources.length === 0 ? (
             <div className="do-empty-state do-source-empty">
-              <h2>No real data sources</h2>
-              <p>Waiting for a real API, database, webhook, or metrics system to be connected.</p>
+              <h2>{t("datasources.emptyTitle")}</h2>
+              <p>{t("datasources.emptyText")}</p>
             </div>
           ) : null}
           {dataSources.map((source) => (
             <div className="do-source-tile" key={source.id}>
               <div className="do-source-header">
                 <div>
-                  <h3>{source.name}</h3>
-                  <p>{source.description}</p>
+                  <h3>{tx(source.name)}</h3>
+                  <p>{tx(source.description)}</p>
                 </div>
                 <span className="mt-badge" data-intent={source.status === "live" ? "positive" : undefined}>
-                  {source.status}
+                  {te("status", source.status)}
                 </span>
               </div>
               <dl className="do-definition-list">
                 <div>
-                  <dt>Kind</dt>
-                  <dd>{source.kind}</dd>
+                  <dt>{t("datasources.kind")}</dt>
+                  <dd>{te("kind", source.kind)}</dd>
                 </div>
                 <div>
-                  <dt>Auth</dt>
-                  <dd>{source.auth}</dd>
+                  <dt>{t("datasources.auth")}</dt>
+                  <dd>{te("auth", source.auth)}</dd>
                 </div>
                 <div>
-                  <dt>Refresh</dt>
+                  <dt>{t("datasources.refresh")}</dt>
                   <dd>{source.refreshIntervalMs / 1000}s</dd>
                 </div>
                 <div>
-                  <dt>Fields</dt>
+                  <dt>{t("datasources.fields")}</dt>
                   <dd>{source.fields.length}</dd>
                 </div>
               </dl>
               <div className="do-source-footer">
                 <code>{source.endpoint}</code>
                 <button className="mt-button" onClick={() => void testSource(source)} type="button">
-                  Test
+                  {t("common.test")}
                 </button>
               </div>
               {testResults[source.id] ? <p className="do-test-result">{testResults[source.id]}</p> : null}

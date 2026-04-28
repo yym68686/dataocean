@@ -1,5 +1,6 @@
 import type { Dashboard, DataSource, MetricDefinition, ThemeMode, TimeRange } from "../domain/types";
 import { PanelRenderer } from "../components/panels/PanelRenderer";
+import { useI18n } from "../lib/i18n";
 
 type DashboardPageProps = {
   dashboard: Dashboard;
@@ -20,25 +21,26 @@ export function DashboardPage({
   theme,
   onSelectPanel,
 }: DashboardPageProps) {
+  const { t, tx } = useI18n();
   const activeSources = dataSources.filter((source) => ["live", "polling", "synced"].includes(source.status)).length;
 
   return (
     <>
-      <section className="do-query-strip" aria-label="Dashboard summary">
+      <section className="do-query-strip" aria-label={t("dashboard.summary")}>
         <div className="do-query-chip">
-          <span className="do-query-label">Dashboard</span>
-          <strong>{dashboard.name}</strong>
+          <span className="do-query-label">{t("dashboard.dashboard")}</span>
+          <strong>{tx(dashboard.name)}</strong>
         </div>
         <div className="do-query-chip">
-          <span className="do-query-label">Time Range</span>
+          <span className="do-query-label">{t("dashboard.timeRange")}</span>
           <strong>{activeRange.toUpperCase()}</strong>
         </div>
         <div className="do-query-chip">
-          <span className="do-query-label">Active Sources</span>
+          <span className="do-query-label">{t("dashboard.activeSources")}</span>
           <strong>{activeSources} / {dataSources.length}</strong>
         </div>
         <div className="do-query-chip">
-          <span className="do-query-label">Semantic Metrics</span>
+          <span className="do-query-label">{t("dashboard.semanticMetrics")}</span>
           <strong>{metrics.length}</strong>
         </div>
       </section>
@@ -59,8 +61,8 @@ export function DashboardPage({
         ))}
         {dashboard.panels.length === 0 ? (
           <article className="mt-card mt-span-12 do-empty-state">
-            <h2>No real panels configured</h2>
-            <p>Connect a real data source, define metrics, then add ChartSpec panels.</p>
+            <h2>{t("dashboard.noPanels")}</h2>
+            <p>{t("dashboard.noPanelsText")}</p>
           </article>
         ) : null}
       </section>

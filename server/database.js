@@ -236,4 +236,90 @@ export async function migrateDatabase() {
     `,
     [JSON.stringify(defaultAppState)],
   );
+
+  await ensureDefaultAppStateResources();
+}
+
+async function ensureDefaultAppStateResources() {
+  const result = await pool.query("select value from app_state where key = 'main'");
+  const current = result.rows[0]?.value;
+  if (!current || typeof current !== "object") {
+    return;
+  }
+
+  const { state: next, changed } = mergeDefaultStateResources(current);
+  if (!changed) {
+    return;
+  }
+
+  await pool.query(
+    `
+      update app_state
+      set value = $1::jsonb,
+          updated_at = now()
+      where key = 'main'
+    `,
+    [JSON.stringify(next)],
+  );
+}
+
+function mergeDefaultStateResources(state) {
+  let changed = false;
+  const dashboardBase = Array.isArray(state.dashboards)
+    ? state.dashboards
+    : state.dashboard
+      ? [state.dashboard]
+      : defaultAppState.dashboards;
+  changed = changed || !Array.isArray(state.dashboards);
+
+  const dashboards = mergeDefaultsById(dashboardBase, defaultAppState.dashboards);
+  const dataSources = mergeDefaultsById(
+    Array.isArray(state.dataSources) ? state.dataSources : defaultAppState.dataSources,
+    defaultAppState.dataSources,
+  );
+  const metrics = mergeDefaultsById(Array.isArray(state.metrics) ? state.metrics : defaultAppState.metrics, defaultAppState.metrics);
+  const alerts = mergeDefaultsById(Array.isArray(state.alerts) ? state.alerts : defaultAppState.alerts, defaultAppState.alerts);
+  const templates = mergeDefaultsById(
+    Array.isArray(state.templates) ? state.templates : defaultAppState.templates,
+    defaultAppState.templates,
+  );
+  changed = changed
+    || !Array.isArray(state.dataSources)
+    || !Array.isArray(state.metrics)
+    || !Array.isArray(state.alerts)
+    || !Array.isArray(state.templates)
+    || dashboards.changed
+    || dataSources.changed
+    || metrics.changed
+    || alerts.changed
+    || templates.changed
+    || !state.activeDashboardId;
+
+  return {
+    changed,
+    state: {
+      ...state,
+      dataSources: dataSources.items,
+      metrics: metrics.items,
+      dashboards: dashboards.items,
+      activeDashboardId: state.activeDashboardId ?? state.dashboard?.id ?? dashboards.items[0]?.id,
+      alerts: alerts.items,
+      templates: templates.items,
+    },
+  };
+}
+
+function mergeDefaultsById(items, defaults) {
+  const merged = Array.isArray(items) ? [...items] : [];
+  const existingIds = new Set(merged.map((item) => item?.id).filter(Boolean));
+  let changed = false;
+
+  for (const item of defaults) {
+    if (!existingIds.has(item.id)) {
+      merged.push(item);
+      changed = true;
+    }
+  }
+
+  return { items: merged, changed };
 }

@@ -1,5 +1,6 @@
 import type { ChartSpec, DataSource } from "../../../domain/types";
 import { usePanelQuery } from "../../../hooks/usePanelQuery";
+import { useI18n } from "../../../lib/i18n";
 
 type StatusCardPanelProps = {
   panel: ChartSpec;
@@ -7,32 +8,33 @@ type StatusCardPanelProps = {
 };
 
 export function StatusCardPanel({ panel, dataSources }: StatusCardPanelProps) {
+  const { t, tx, te } = useI18n();
   const { result } = usePanelQuery(panel);
 
   return (
     <div>
       <div className="mt-card-header">
         <div>
-          <h2 className="mt-card-title">{panel.title}</h2>
-          <p className="mt-card-subtitle">{panel.description}</p>
+          <h2 className="mt-card-title">{tx(panel.title)}</h2>
+          <p className="mt-card-subtitle">{tx(panel.description)}</p>
         </div>
       </div>
       <div className="do-status-list">
         {dataSources.slice(0, 3).map((source) => (
           <div className="do-status-row" key={source.id}>
             <div>
-              <strong>{source.name}</strong>
-              <span>{source.kind} · {source.fields.length} fields</span>
+              <strong>{tx(source.name)}</strong>
+              <span>{te("kind", source.kind)} · {t("panel.fields", { count: source.fields.length })}</span>
             </div>
             <span className="mt-badge" data-intent={source.status === "live" ? "positive" : undefined}>
-              {source.status}
+              {te("status", source.status)}
             </span>
           </div>
         ))}
       </div>
       <div className="do-status-footer">
-        <span>Freshness</span>
-        <strong>{result?.meta.freshness ?? "loading"}</strong>
+        <span>{t("panel.freshness")}</span>
+        <strong>{result?.meta.freshness ? t(`common.${result.meta.freshness}`) : t("common.loading")}</strong>
       </div>
     </div>
   );

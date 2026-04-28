@@ -13,6 +13,7 @@ export const sectionLabels: Record<AppSection, string> = {
   dashboards: "Dashboards",
   "provider-zhupay": "Zhupay",
   "provider-creem": "Creem",
+  "provider-sub2api": "Sub2API",
   "provider-manual": "Manual Revenue",
   datasources: "Data Sources",
   metrics: "Metrics",

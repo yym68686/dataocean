@@ -1,6 +1,7 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { getCurrencyDisplayConfig } from "./currency.js";
 import { migrateDatabase, pool, waitForDatabase } from "./database.js";
 import {
   getCreemStatus,
@@ -20,6 +21,11 @@ import {
   updateManualRevenueEntry,
 } from "./manualRevenue.js";
 import { queryRevenueMetric } from "./revenue.js";
+import {
+  getSub2ApiStatus,
+  querySub2ApiMetric,
+  syncSub2Api,
+} from "./sub2api.js";
 import {
   createCollectionItem,
   createDashboardPanel,
@@ -84,6 +90,7 @@ const apiSpec = {
   ],
   state: [
     "GET /api/state",
+    "GET /api/currency",
     "PUT /api/state",
     "POST /api/query/panel",
     "GET|POST /api/data-sources",
@@ -115,6 +122,8 @@ const apiSpec = {
     "GET /api/connectors/manual-revenue/status",
     "GET|POST /api/connectors/manual-revenue/entries",
     "PATCH|DELETE /api/connectors/manual-revenue/entries/:id",
+    "GET /api/connectors/sub2api/status",
+    "POST /api/connectors/sub2api/sync",
   ],
   admin: ["GET /api/admin/users", "DELETE /api/admin/users/:userId", "GET /api/admin/audit-logs"],
 };
@@ -243,6 +252,10 @@ app.get("/api/state", requireAuth, asyncRoute(async (_req, res) => {
   res.json(await getAppState());
 }));
 
+app.get("/api/currency", requireAuth, (_req, res) => {
+  res.json(getCurrencyDisplayConfig());
+});
+
 app.put("/api/state", requireAuth, requireAdmin, asyncRoute(async (req, res) => {
   assertObject(req.body);
   res.json(await replaceAppState(req.body, req.auth.user.id));
@@ -278,6 +291,11 @@ app.post("/api/query/panel", requireAuth, asyncRoute(async (req, res) => {
 
   if (dataSource.kind === "manual") {
     res.json(await queryManualRevenueMetric({ dataSource, metric, query: panel.query }));
+    return;
+  }
+
+  if (dataSource.kind === "sub2api") {
+    res.json(await querySub2ApiMetric({ dataSource, metric, query: panel.query }));
     return;
   }
 
@@ -370,6 +388,14 @@ app.patch("/api/connectors/manual-revenue/entries/:id", requireAuth, asyncRoute(
 
 app.delete("/api/connectors/manual-revenue/entries/:id", requireAuth, asyncRoute(async (req, res) => {
   res.json({ entry: await deleteManualRevenueEntry(req.params.id, req.auth.user) });
+}));
+
+app.get("/api/connectors/sub2api/status", requireAuth, asyncRoute(async (_req, res) => {
+  res.json(await getSub2ApiStatus());
+}));
+
+app.post("/api/connectors/sub2api/sync", requireAuth, requireAdmin, asyncRoute(async (_req, res) => {
+  res.json(await syncSub2Api());
 }));
 
 for (const slug of ["data-sources", "metrics", "dashboards", "alerts", "templates"]) {

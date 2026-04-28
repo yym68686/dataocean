@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { apiClient, type AuthResponse } from "../api/client";
 import type { ThemeMode } from "../domain/types";
+import { useI18n } from "../lib/i18n";
 
 type LoginPageProps = {
   theme: ThemeMode;
@@ -9,6 +10,7 @@ type LoginPageProps = {
 };
 
 export function LoginPage({ theme, onThemeChange, onAuthenticated }: LoginPageProps) {
+  const { t, toggleLocale } = useI18n();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,7 +30,7 @@ export function LoginPage({ theme, onThemeChange, onAuthenticated }: LoginPagePr
           : await apiClient.login({ email, password });
       onAuthenticated(response);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Authentication failed");
+      setError(submitError instanceof Error ? submitError.message : t("auth.failed"));
     } finally {
       setLoading(false);
     }
@@ -41,18 +43,18 @@ export function LoginPage({ theme, onThemeChange, onAuthenticated }: LoginPagePr
           <span className="mt-brand-mark" aria-hidden="true" />
           <div>
             <h1>DataOcean</h1>
-            <p>Universal data terminal</p>
+            <p>{t("app.universalTerminal")}</p>
           </div>
         </div>
 
-        <div className="mt-segmented do-auth-tabs" role="group" aria-label="Authentication mode">
+        <div className="mt-segmented do-auth-tabs" role="group" aria-label={t("auth.mode")}>
           <button
             className="mt-segment"
             data-active={mode === "login"}
             onClick={() => setMode("login")}
             type="button"
           >
-            Sign in
+            {t("auth.signIn")}
           </button>
           <button
             className="mt-segment"
@@ -60,14 +62,14 @@ export function LoginPage({ theme, onThemeChange, onAuthenticated }: LoginPagePr
             onClick={() => setMode("register")}
             type="button"
           >
-            Create account
+            {t("auth.createAccount")}
           </button>
         </div>
 
         <form className="do-auth-form" onSubmit={(event) => void submit(event)}>
           {mode === "register" ? (
             <label className="mt-field">
-              <span className="mt-label">Name</span>
+              <span className="mt-label">{t("auth.name")}</span>
               <input
                 autoComplete="name"
                 className="mt-input"
@@ -80,7 +82,7 @@ export function LoginPage({ theme, onThemeChange, onAuthenticated }: LoginPagePr
           ) : null}
 
           <label className="mt-field">
-            <span className="mt-label">Email</span>
+              <span className="mt-label">{t("auth.email")}</span>
             <input
               autoComplete="email"
               className="mt-input"
@@ -93,13 +95,13 @@ export function LoginPage({ theme, onThemeChange, onAuthenticated }: LoginPagePr
           </label>
 
           <label className="mt-field">
-            <span className="mt-label">Password</span>
+              <span className="mt-label">{t("auth.password")}</span>
             <input
               autoComplete={mode === "register" ? "new-password" : "current-password"}
               className="mt-input"
               minLength={8}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="At least 8 characters"
+              placeholder={t("auth.passwordPlaceholder")}
               required
               type="password"
               value={password}
@@ -109,14 +111,17 @@ export function LoginPage({ theme, onThemeChange, onAuthenticated }: LoginPagePr
           {error ? <div className="do-auth-error">{error}</div> : null}
 
           <button className="mt-button" data-variant="primary" disabled={loading} type="submit">
-            {loading ? "Working..." : mode === "register" ? "Create account" : "Sign in"}
+            {loading ? t("auth.working") : mode === "register" ? t("auth.createAccount") : t("auth.signIn")}
           </button>
         </form>
 
         <div className="do-auth-footer">
-          <span>{mode === "register" ? "First user becomes admin" : "Email and password"}</span>
+          <span>{mode === "register" ? t("auth.firstUserAdmin") : t("auth.emailPassword")}</span>
+          <button className="mt-button" onClick={toggleLocale} type="button">
+            {t("app.language")}
+          </button>
           <button className="mt-button" onClick={onThemeChange} type="button">
-            {theme === "light" ? "Dark mode" : "Light mode"}
+            {theme === "light" ? t("common.darkMode") : t("common.lightMode")}
           </button>
         </div>
       </section>

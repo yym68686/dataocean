@@ -1,4 +1,5 @@
 import type { AuthUser } from "../domain/types";
+import { useI18n } from "../lib/i18n";
 
 type SettingsPageProps = {
   user: AuthUser;
@@ -8,39 +9,40 @@ type SettingsPageProps = {
 };
 
 export function SettingsPage({ user, issuedApiKey, onLogout, onRotateApiKey }: SettingsPageProps) {
+  const { t, te } = useI18n();
   return (
     <section className="mt-grid">
       <article className="mt-card mt-span-6">
         <div className="mt-card-header">
           <div>
-            <h2 className="mt-card-title">Account</h2>
-            <p className="mt-card-subtitle">Session, role, and API access.</p>
+            <h2 className="mt-card-title">{t("settings.account")}</h2>
+            <p className="mt-card-subtitle">{t("settings.subtitle")}</p>
           </div>
           <button className="mt-button" onClick={onLogout} type="button">
-            Sign out
+            {t("settings.signOut")}
           </button>
         </div>
         <div className="mt-card-body do-settings-stack">
           <label className="mt-field">
-            <span className="mt-label">Email</span>
+            <span className="mt-label">{t("auth.email")}</span>
             <input className="mt-input" readOnly value={user.email} />
           </label>
           <label className="mt-field">
-            <span className="mt-label">Role</span>
-            <input className="mt-input" readOnly value={`${user.role} / ${user.apiKeyScope} api key`} />
+            <span className="mt-label">{t("settings.role")}</span>
+            <input className="mt-input" readOnly value={t("settings.roleValue", { role: te("role", user.role), scope: te("scope", user.apiKeyScope) })} />
           </label>
           <label className="mt-field">
-            <span className="mt-label">API key prefix</span>
+            <span className="mt-label">{t("settings.apiKeyPrefix")}</span>
             <input className="mt-input" readOnly value={`${user.apiKeyPrefix}...`} />
           </label>
           {issuedApiKey ? (
             <label className="mt-field">
-              <span className="mt-label">New API key</span>
+              <span className="mt-label">{t("settings.newApiKey")}</span>
               <input className="mt-input" readOnly value={issuedApiKey} />
             </label>
           ) : null}
           <button className="mt-button" onClick={onRotateApiKey} type="button">
-            Rotate API key
+            {t("settings.rotateApiKey")}
           </button>
         </div>
       </article>
@@ -48,17 +50,17 @@ export function SettingsPage({ user, issuedApiKey, onLogout, onRotateApiKey }: S
       <article className="mt-card mt-span-6">
         <div className="mt-card-header">
           <div>
-            <h2 className="mt-card-title">Platform Roadmap</h2>
-            <p className="mt-card-subtitle">Next implementation layers.</p>
+            <h2 className="mt-card-title">{t("settings.roadmap")}</h2>
+            <p className="mt-card-subtitle">{t("settings.roadmapSubtitle")}</p>
           </div>
         </div>
         <div className="mt-card-body">
           <ul className="do-roadmap">
-            <li>Persist dashboards and ChartSpec JSON in PostgreSQL.</li>
-            <li>Add real REST API connector execution with credential vaulting.</li>
-            <li>Add SQL and PromQL query builders.</li>
-            <li>Add webhook ingestion and live event streaming.</li>
-            <li>Add AI-assisted metric and dashboard generation.</li>
+            <li>{t("settings.roadmap1")}</li>
+            <li>{t("settings.roadmap2")}</li>
+            <li>{t("settings.roadmap3")}</li>
+            <li>{t("settings.roadmap4")}</li>
+            <li>{t("settings.roadmap5")}</li>
           </ul>
         </div>
       </article>

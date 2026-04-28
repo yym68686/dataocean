@@ -26,6 +26,7 @@ light-first, dense, clean, low-decoration, data-prioritized, and fast.
 - `server/` - Node/Express API for auth, API keys, app state CRUD, and PostgreSQL persistence.
 - `server/zhupay.js` - Zhupay V2 RSA connector, callback verification, sync, and query mapping.
 - `server/creem.js` - Creem API-key connector, HMAC webhook verification, scheduled sync, and query mapping.
+- `server/sub2api.js` - Sub2API admin connector; reads real group usage, caches API responses briefly, and converts configured channel spend into earned revenue.
 - `design-system/README.md` - design system overview and usage.
 - `design-system/css/market-system.css` - CSS variables and reusable component classes.
 - `design-system/tokens/market.tokens.json` - source design tokens.
@@ -136,6 +137,10 @@ Current API behavior:
   and optionally `CREEM_WEBHOOK_SECRET`. Creem scheduled sync uses
   `CREEM_SYNC_ENABLED=true`, `CREEM_SYNC_INTERVAL_MS=3600000`,
   `CREEM_SYNC_MAX_PAGES=4`, and `CREEM_SYNC_PAGE_SIZE=50`.
+- Sub2API credentials must be provided as `SUB2API_ADMIN_API_KEY`. The current
+  revenue model reads `SUB2API_CHANNELS=codex,codexplus`, treats their
+  `actual_cost` as B-side usage spend, and records earned revenue as
+  `actual_cost * SUB2API_PROFIT_RATE` with default rate `0.025`.
 
 Long-term intended stack:
 
@@ -183,9 +188,9 @@ email/password auth, admin-first bootstrap, per-user API keys, PostgreSQL-backed
 dashboard state, semantic metrics, ChartSpec-backed panels, auto-refreshing panel
 queries, and a Polymarket-inspired UI.
 
-The app intentionally contains no fake business/ops values. Zhupay and Creem
-source, metric, and panel definitions may be present, but values must come from
-the real provider APIs or verified callbacks/webhooks.
+The app intentionally contains no fake business/ops values. Zhupay, Creem, and
+Sub2API source, metric, and panel definitions may be present, but values must
+come from real provider APIs or verified callbacks/webhooks.
 
 The next implementation step should be to add real Custom REST API execution,
 encrypted credential storage, and server-side query execution with caching and
