@@ -170,6 +170,24 @@ export const apiClient = {
     }>("/api/connectors/sub2api/status");
   },
 
+  async getNl2PcbStatus() {
+    return request<{
+      configured: boolean;
+      baseUrl: string;
+      syncLimit: number;
+      userCount: number;
+      activeUserCount: number;
+      disabledUserCount: number;
+      jobCount: number;
+      todayJobCount: number;
+      feedbackCount: number;
+      lastSnapshotAt?: string | null;
+      lastUserAt?: string | null;
+      lastJobAt?: string | null;
+      lastFeedbackAt?: string | null;
+    }>("/api/connectors/nl2pcb/status");
+  },
+
   async listManualRevenueEntries(input: { limit?: number } = {}) {
     const params = new URLSearchParams();
     if (input.limit) {
@@ -239,6 +257,18 @@ export const apiClient = {
       summary: unknown;
     }>("/api/connectors/sub2api/sync", {
       method: "POST",
+    });
+  },
+
+  async syncNl2Pcb(input: { limit?: number } = {}) {
+    return request<{
+      ok: boolean;
+      syncedUsers: number;
+      syncedJobs: number;
+      syncedFeedback: number;
+    }>("/api/connectors/nl2pcb/sync", {
+      method: "POST",
+      body: JSON.stringify(input),
     });
   },
 };

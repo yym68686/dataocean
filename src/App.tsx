@@ -27,8 +27,8 @@ const sections: AppSection[] = [
   "settings",
 ];
 
-const providerSections: AppSection[] = ["provider-zhupay", "provider-creem", "provider-sub2api", "provider-manual"];
-const dashboardProviderSections: AppSection[] = ["provider-zhupay", "provider-creem", "provider-sub2api"];
+const providerSections: AppSection[] = ["provider-zhupay", "provider-creem", "provider-sub2api", "provider-nl2pcb", "provider-manual"];
+const dashboardProviderSections: AppSection[] = ["provider-zhupay", "provider-creem", "provider-sub2api", "provider-nl2pcb"];
 const adminSections: AppSection[] = ["admin-users"];
 
 const fallbackAppData: AppData = {
@@ -385,6 +385,7 @@ function getDashboardForSection(section: AppSection, dashboards: typeof fallback
     "provider-zhupay": "dashboard-zhupay-revenue",
     "provider-creem": "dashboard-creem-revenue",
     "provider-sub2api": "dashboard-sub2api-revenue",
+    "provider-nl2pcb": "dashboard-nl2pcb-ops",
   };
   const dashboardId = dashboardIds[section];
 

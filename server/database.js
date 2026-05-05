@@ -213,6 +213,51 @@ export async function migrateDatabase() {
       updated_at timestamptz not null default now()
     );
 
+    create table if not exists nl2pcb_snapshots (
+      id bigserial primary key,
+      captured_at timestamptz not null default now(),
+      user_count integer not null default 0,
+      active_user_count integer not null default 0,
+      disabled_user_count integer not null default 0,
+      job_count integer not null default 0,
+      feedback_count integer not null default 0,
+      raw jsonb not null
+    );
+
+    create table if not exists nl2pcb_users (
+      id text primary key,
+      email text,
+      disabled boolean,
+      source_created_at timestamptz,
+      last_login_at timestamptz,
+      raw jsonb not null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create table if not exists nl2pcb_jobs (
+      id text primary key,
+      status text,
+      title text,
+      user_id text,
+      source_created_at timestamptz,
+      source_updated_at timestamptz,
+      raw jsonb not null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create table if not exists nl2pcb_feedback (
+      id text primary key,
+      user_id text,
+      email text,
+      message text,
+      source_created_at timestamptz,
+      raw jsonb not null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
     create index if not exists sessions_expires_at_idx on sessions (expires_at);
     create index if not exists audit_logs_created_at_idx on audit_logs (created_at desc);
     create index if not exists zhupay_snapshots_captured_at_idx on zhupay_merchant_snapshots (captured_at desc);
@@ -226,6 +271,12 @@ export async function migrateDatabase() {
     create index if not exists manual_revenue_entries_received_at_idx on manual_revenue_entries (received_at desc);
     create index if not exists manual_revenue_entries_currency_idx on manual_revenue_entries (currency);
     create index if not exists manual_revenue_entries_created_by_idx on manual_revenue_entries (created_by);
+    create index if not exists nl2pcb_snapshots_captured_at_idx on nl2pcb_snapshots (captured_at desc);
+    create index if not exists nl2pcb_users_source_created_at_idx on nl2pcb_users (source_created_at desc);
+    create index if not exists nl2pcb_users_disabled_idx on nl2pcb_users (disabled);
+    create index if not exists nl2pcb_jobs_source_created_at_idx on nl2pcb_jobs (source_created_at desc);
+    create index if not exists nl2pcb_jobs_status_idx on nl2pcb_jobs (status);
+    create index if not exists nl2pcb_feedback_source_created_at_idx on nl2pcb_feedback (source_created_at desc);
   `);
 
   await pool.query(

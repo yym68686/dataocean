@@ -62,6 +62,21 @@ export function DataSourcesPage({ dataSources }: DataSourcesPageProps) {
       return;
     }
 
+    if (source.kind === "nl2pcb") {
+      const status = await apiClient.getNl2PcbStatus();
+      setTestResults((current) => ({
+        ...current,
+        [source.id]: status.configured
+          ? t("datasources.nl2pcbConfigured", {
+              users: status.userCount,
+              jobs: status.jobCount,
+              feedback: status.feedbackCount,
+            })
+          : t("datasources.nl2pcbMissing"),
+      }));
+      return;
+    }
+
     const result = await queryEngine.testDataSource(source);
     setTestResults((current) => ({
       ...current,

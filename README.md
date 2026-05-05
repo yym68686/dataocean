@@ -202,6 +202,15 @@ Sub2API:
 - `GET /api/connectors/sub2api/status`
 - `POST /api/connectors/sub2api/sync`
 
+NL2PCB:
+
+- `GET /api/connectors/nl2pcb/status`
+- `GET /api/connectors/nl2pcb/scheduler`
+- `POST /api/connectors/nl2pcb/sync`
+- `GET /api/connectors/nl2pcb/users`
+- `GET /api/connectors/nl2pcb/jobs`
+- `GET /api/connectors/nl2pcb/feedback`
+
 Send session tokens or API keys with:
 
 ```http
@@ -331,6 +340,29 @@ Refresh the live cache after setting credentials:
 ```bash
 curl -X POST https://dataocean.fugue.pro/api/connectors/sub2api/sync \
   -H "Authorization: Bearer $DATAOCEAN_ADMIN_API_KEY"
+```
+
+## NL2PCB Setup
+
+The NL2PCB connector is server-side only. Browser code never receives the
+admin key. DataOcean reads the NL2PCB Admin API, caches users, jobs, and
+feedback in PostgreSQL, then renders an independent NL2PCB provider dashboard.
+
+```text
+NL2PCB_BASE_URL=https://nl2pcb.fugue.pro
+NL2PCB_ADMIN_KEY=<admin key>
+NL2PCB_SYNC_ENABLED=true
+NL2PCB_SYNC_INTERVAL_MS=300000
+NL2PCB_SYNC_LIMIT=200
+```
+
+Refresh the local cache after setting credentials:
+
+```bash
+curl -X POST https://dataocean.fugue.pro/api/connectors/nl2pcb/sync \
+  -H "Authorization: Bearer $DATAOCEAN_ADMIN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"limit":200}'
 ```
 
 ## Directory Structure

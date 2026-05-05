@@ -27,6 +27,16 @@ import {
   syncSub2Api,
 } from "./sub2api.js";
 import {
+  getNl2PcbSchedulerStatus,
+  getNl2PcbStatus,
+  listNl2PcbFeedback,
+  listNl2PcbJobs,
+  listNl2PcbUsers,
+  queryNl2PcbMetric,
+  startNl2PcbScheduler,
+  syncNl2Pcb,
+} from "./nl2pcb.js";
+import {
   createCollectionItem,
   createDashboardPanel,
   createSession,
@@ -124,6 +134,12 @@ const apiSpec = {
     "PATCH|DELETE /api/connectors/manual-revenue/entries/:id",
     "GET /api/connectors/sub2api/status",
     "POST /api/connectors/sub2api/sync",
+    "GET /api/connectors/nl2pcb/status",
+    "GET /api/connectors/nl2pcb/scheduler",
+    "POST /api/connectors/nl2pcb/sync",
+    "GET /api/connectors/nl2pcb/users",
+    "GET /api/connectors/nl2pcb/jobs",
+    "GET /api/connectors/nl2pcb/feedback",
   ],
   admin: ["GET /api/admin/users", "DELETE /api/admin/users/:userId", "GET /api/admin/audit-logs"],
 };
@@ -299,6 +315,11 @@ app.post("/api/query/panel", requireAuth, asyncRoute(async (req, res) => {
     return;
   }
 
+  if (dataSource.kind === "nl2pcb") {
+    res.json(await queryNl2PcbMetric({ dataSource, metric, query: panel.query }));
+    return;
+  }
+
   {
     const error = new Error(`Server-side connector is not implemented for ${dataSource.kind}`);
     error.status = 501;
@@ -398,6 +419,30 @@ app.post("/api/connectors/sub2api/sync", requireAuth, requireAdmin, asyncRoute(a
   res.json(await syncSub2Api());
 }));
 
+app.get("/api/connectors/nl2pcb/status", requireAuth, asyncRoute(async (_req, res) => {
+  res.json(await getNl2PcbStatus());
+}));
+
+app.get("/api/connectors/nl2pcb/scheduler", requireAuth, asyncRoute(async (_req, res) => {
+  res.json(getNl2PcbSchedulerStatus());
+}));
+
+app.get("/api/connectors/nl2pcb/users", requireAuth, asyncRoute(async (req, res) => {
+  res.json({ users: await listNl2PcbUsers({ limit: req.query.limit }) });
+}));
+
+app.get("/api/connectors/nl2pcb/jobs", requireAuth, asyncRoute(async (req, res) => {
+  res.json({ jobs: await listNl2PcbJobs({ limit: req.query.limit }) });
+}));
+
+app.get("/api/connectors/nl2pcb/feedback", requireAuth, asyncRoute(async (req, res) => {
+  res.json({ feedback: await listNl2PcbFeedback({ limit: req.query.limit }) });
+}));
+
+app.post("/api/connectors/nl2pcb/sync", requireAuth, requireAdmin, asyncRoute(async (req, res) => {
+  res.json(await syncNl2Pcb({ limit: req.body?.limit }));
+}));
+
 for (const slug of ["data-sources", "metrics", "dashboards", "alerts", "templates"]) {
   app.get(`/api/${slug}`, requireAuth, asyncRoute(async (_req, res) => {
     res.json({ items: await listCollection(slug) });
@@ -464,4 +509,5 @@ app.listen(port, "0.0.0.0", () => {
   console.log(`DataOcean API listening on ${port}`);
   startZhupayScheduler();
   startCreemScheduler();
+  startNl2PcbScheduler();
 });

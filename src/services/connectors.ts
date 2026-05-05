@@ -42,6 +42,7 @@ export const connectorRegistry: Record<string, DataConnector> = {
   zhupay: new UnconfiguredConnector(),
   creem: new UnconfiguredConnector(),
   sub2api: new UnconfiguredConnector(),
+  nl2pcb: new UnconfiguredConnector(),
   manual: new UnconfiguredConnector(),
   aggregate: new UnconfiguredConnector(),
   webhook: new UnconfiguredConnector(),
