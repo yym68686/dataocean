@@ -8,7 +8,7 @@ import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DataSourcesPage } from "./pages/DataSourcesPage";
 import { LoginPage } from "./pages/LoginPage";
-import { ManualRevenuePage, clearManualRevenuePageCache } from "./pages/ManualRevenuePage";
+import { clearManualRevenuePageCache } from "./pages/ManualRevenuePage";
 import { MetricsPage } from "./pages/MetricsPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -27,8 +27,6 @@ const sections: AppSection[] = [
   "settings",
 ];
 
-const providerSections: AppSection[] = ["provider-zhupay", "provider-creem", "provider-sub2api", "provider-nl2pcb", "provider-manual"];
-const dashboardProviderSections: AppSection[] = ["provider-zhupay", "provider-creem", "provider-sub2api", "provider-nl2pcb"];
 const adminSections: AppSection[] = ["admin-users"];
 
 const fallbackAppData: AppData = {
@@ -105,7 +103,7 @@ export default function App() {
         }
       } catch (error) {
         clearStoredToken();
-        clearProviderPageCaches();
+        clearWorkspacePageCaches();
         if (!cancelled) {
           setAuthUser(null);
           setAppError(error instanceof Error ? error.message : t("app.restoreFailed"));
@@ -153,7 +151,7 @@ export default function App() {
   }
 
   async function handleAuthenticated(response: AuthResponse) {
-    clearProviderPageCaches();
+    clearWorkspacePageCaches();
     setStoredToken(response.token);
     setAuthUser(response.user);
     setIssuedApiKey(response.apiKey);
@@ -167,7 +165,7 @@ export default function App() {
     } catch {
       // Local logout should still clear the browser session if the API call fails.
     }
-    clearProviderPageCaches();
+    clearWorkspacePageCaches();
     clearStoredToken();
     setAuthUser(null);
     setIssuedApiKey(undefined);
@@ -209,7 +207,7 @@ export default function App() {
   }
 
   const isAdmin = authUser.role === "admin";
-  const isDashboardSection = activeSection === "command" || dashboardProviderSections.includes(activeSection) || activeSection === "dashboards";
+  const isDashboardSection = activeSection === "command" || activeSection === "dashboards";
   const currentTitle = isDashboardSection ? tx(activeDashboard.name) : t(`section.${activeSection}`);
   const inspectorPanel = isDashboardSection ? selectedPanel : undefined;
 
@@ -223,22 +221,6 @@ export default function App() {
 
         <nav className="mt-nav" aria-label="Primary">
           {sections.map((section) => (
-            <button
-              className="mt-nav-item do-nav-button"
-              data-active={activeSection === section}
-              key={section}
-              onClick={() => setActiveSection(section)}
-              type="button"
-            >
-              <span className="mt-dot" />
-              <span>{t(`section.${section}`)}</span>
-            </button>
-          ))}
-        </nav>
-
-        <nav className="mt-nav do-admin-nav" aria-label="Providers">
-          <div className="do-nav-heading">{t("nav.providers")}</div>
-          {providerSections.map((section) => (
             <button
               className="mt-nav-item do-nav-button"
               data-active={activeSection === section}
@@ -345,11 +327,17 @@ export default function App() {
             theme={theme}
           />
         ) : null}
-        {activeSection === "datasources" ? <DataSourcesPage dataSources={appData.dataSources} /> : null}
+        {activeSection === "datasources" ? (
+          <DataSourcesPage
+            dashboards={dashboards}
+            dataSources={appData.dataSources}
+            metrics={appData.metrics}
+            theme={theme}
+          />
+        ) : null}
         {activeSection === "metrics" ? <MetricsPage metrics={appData.metrics} dataSources={appData.dataSources} /> : null}
         {activeSection === "alerts" ? <AlertsPage alerts={appData.alerts} /> : null}
         {activeSection === "templates" ? <TemplatesPage templates={appData.templates} /> : null}
-        {activeSection === "provider-manual" ? <ManualRevenuePage /> : null}
         {activeSection === "admin-users" && isAdmin ? <AdminUsersPage currentUser={authUser} /> : null}
         {activeSection === "settings" ? (
           <SettingsPage
@@ -373,7 +361,7 @@ export default function App() {
   );
 }
 
-function clearProviderPageCaches() {
+function clearWorkspacePageCaches() {
   clearPanelQueryCache();
   clearManualRevenuePageCache();
 }
@@ -382,10 +370,6 @@ function getDashboardForSection(section: AppSection, dashboards: typeof fallback
   const dashboardIds: Partial<Record<AppSection, string>> = {
     command: "dashboard-command-center",
     dashboards: "dashboard-command-center",
-    "provider-zhupay": "dashboard-zhupay-revenue",
-    "provider-creem": "dashboard-creem-revenue",
-    "provider-sub2api": "dashboard-sub2api-revenue",
-    "provider-nl2pcb": "dashboard-nl2pcb-ops",
   };
   const dashboardId = dashboardIds[section];
 

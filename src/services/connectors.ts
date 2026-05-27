@@ -39,6 +39,7 @@ export const connectorRegistry: Record<string, DataConnector> = {
   postgres: new UnconfiguredConnector(),
   prometheus: new UnconfiguredConnector(),
   stripe: new UnconfiguredConnector(),
+  analytics: new UnconfiguredConnector(),
   zhupay: new UnconfiguredConnector(),
   creem: new UnconfiguredConnector(),
   sub2api: new UnconfiguredConnector(),

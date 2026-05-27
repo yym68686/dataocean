@@ -1,5 +1,7 @@
 import pg from "pg";
+import { randomUUID } from "node:crypto";
 import { defaultAppState } from "./defaultState.js";
+import { getSecretPrefix, hashSecret } from "./security.js";
 
 const { Pool } = pg;
 
@@ -21,6 +23,10 @@ function createConnectionString() {
 }
 
 const connectionString = createConnectionString();
+const DEFAULT_ANALYTICS_PROJECT_ID = process.env.DATAOCEAN_DEFAULT_PROJECT_ID?.trim() || "uni-api-web";
+const DEFAULT_ANALYTICS_PROJECT_NAME = process.env.DATAOCEAN_DEFAULT_PROJECT_NAME?.trim() || "Uni API Web";
+const DEFAULT_ANALYTICS_PUBLIC_KEY = process.env.DATAOCEAN_PUBLIC_WRITE_KEY?.trim() || "";
+const DEFAULT_ANALYTICS_SERVER_KEY = process.env.DATAOCEAN_SERVER_KEY?.trim() || "";
 
 export const pool = new Pool({
   connectionString,
@@ -258,6 +264,112 @@ export async function migrateDatabase() {
       updated_at timestamptz not null default now()
     );
 
+    create table if not exists analytics_projects (
+      id text primary key,
+      name text not null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create table if not exists analytics_project_origins (
+      id uuid primary key,
+      project_id text not null references analytics_projects(id) on delete cascade,
+      origin text not null,
+      created_at timestamptz not null default now(),
+      unique (project_id, origin)
+    );
+
+    create table if not exists analytics_project_keys (
+      id uuid primary key,
+      project_id text not null references analytics_projects(id) on delete cascade,
+      scope text not null check (scope in ('public', 'server')),
+      key_hash text not null unique,
+      key_prefix text not null,
+      key_value text,
+      created_at timestamptz not null default now(),
+      last_used_at timestamptz
+    );
+
+    alter table if exists analytics_project_keys
+      add column if not exists key_value text;
+
+    create table if not exists analytics_events (
+      id uuid primary key,
+      project_id text not null references analytics_projects(id) on delete cascade,
+      event_id text not null,
+      name text not null,
+      anonymous_id text,
+      session_id text,
+      user_id text,
+      occurred_at timestamptz not null,
+      received_at timestamptz not null default now(),
+      url text,
+      path text,
+      title text,
+      referrer text,
+      referrer_host text,
+      source text,
+      medium text,
+      campaign text,
+      content text,
+      term text,
+      properties jsonb not null default '{}'::jsonb,
+      context jsonb not null default '{}'::jsonb,
+      raw jsonb not null default '{}'::jsonb,
+      unique (project_id, event_id)
+    );
+
+    create table if not exists analytics_identities (
+      id uuid primary key,
+      project_id text not null references analytics_projects(id) on delete cascade,
+      anonymous_id text not null,
+      user_id text not null,
+      first_seen_at timestamptz not null,
+      last_seen_at timestamptz not null,
+      unique (project_id, anonymous_id, user_id)
+    );
+
+    create table if not exists analytics_attributions (
+      id uuid primary key,
+      project_id text not null references analytics_projects(id) on delete cascade,
+      user_id text not null,
+      anonymous_id text,
+      signup_event_id text,
+      signup_at timestamptz not null,
+      first_source text,
+      first_medium text,
+      first_campaign text,
+      first_referrer_host text,
+      first_landing_path text,
+      last_source text,
+      last_medium text,
+      last_campaign text,
+      last_referrer_host text,
+      last_landing_path text,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      unique (project_id, user_id)
+    );
+
+    create table if not exists analytics_daily_rollups (
+      project_id text not null references analytics_projects(id) on delete cascade,
+      day date not null,
+      source text not null,
+      landing_views integer not null default 0,
+      signup_started integer not null default 0,
+      signups integer not null default 0,
+      updated_at timestamptz not null default now(),
+      primary key (project_id, day, source)
+    );
+
+    create or replace function source_key(source text, referrer_host text)
+    returns text
+    language sql
+    immutable
+    as $$
+      select coalesce(nullif(trim(source), ''), nullif(trim(referrer_host), ''), 'direct')
+    $$;
+
     create index if not exists sessions_expires_at_idx on sessions (expires_at);
     create index if not exists audit_logs_created_at_idx on audit_logs (created_at desc);
     create index if not exists zhupay_snapshots_captured_at_idx on zhupay_merchant_snapshots (captured_at desc);
@@ -277,8 +389,16 @@ export async function migrateDatabase() {
     create index if not exists nl2pcb_jobs_source_created_at_idx on nl2pcb_jobs (source_created_at desc);
     create index if not exists nl2pcb_jobs_status_idx on nl2pcb_jobs (status);
     create index if not exists nl2pcb_feedback_source_created_at_idx on nl2pcb_feedback (source_created_at desc);
+    create index if not exists analytics_events_project_occurred_idx on analytics_events (project_id, occurred_at desc);
+    create index if not exists analytics_events_project_name_occurred_idx on analytics_events (project_id, name, occurred_at desc);
+    create index if not exists analytics_events_anonymous_idx on analytics_events (project_id, anonymous_id, occurred_at desc);
+    create index if not exists analytics_events_user_idx on analytics_events (project_id, user_id, occurred_at desc);
+    create index if not exists analytics_events_source_idx on analytics_events (project_id, source, referrer_host);
+    create index if not exists analytics_attributions_signup_idx on analytics_attributions (project_id, signup_at desc);
+    create index if not exists analytics_attributions_first_source_idx on analytics_attributions (project_id, first_source, first_referrer_host);
   `);
 
+  await ensureDefaultAnalyticsProject();
   await pool.query(
     `
       insert into app_state (key, value)
@@ -289,6 +409,68 @@ export async function migrateDatabase() {
   );
 
   await ensureDefaultAppStateResources();
+}
+
+async function ensureDefaultAnalyticsProject() {
+  await pool.query(
+    `
+      insert into analytics_projects (id, name)
+      values ($1, $2)
+      on conflict (id) do update
+        set name = excluded.name,
+            updated_at = now()
+    `,
+    [DEFAULT_ANALYTICS_PROJECT_ID, DEFAULT_ANALYTICS_PROJECT_NAME],
+  );
+
+  await ensureAnalyticsProjectKey(DEFAULT_ANALYTICS_PROJECT_ID, "public", DEFAULT_ANALYTICS_PUBLIC_KEY);
+  await ensureAnalyticsProjectKey(DEFAULT_ANALYTICS_PROJECT_ID, "server", DEFAULT_ANALYTICS_SERVER_KEY);
+}
+
+async function ensureAnalyticsProjectKey(projectId, scope, key) {
+  const effectiveKey = key || (scope === "public" ? await createDefaultPublicAnalyticsKey(projectId) : "");
+  if (!effectiveKey) {
+    return;
+  }
+
+  await pool.query(
+    `
+      insert into analytics_project_keys (id, project_id, scope, key_hash, key_prefix, key_value)
+      values ($1, $2, $3, $4, $5, $6)
+      on conflict (key_hash) do update
+        set project_id = excluded.project_id,
+            scope = excluded.scope,
+            key_prefix = excluded.key_prefix,
+            key_value = coalesce(analytics_project_keys.key_value, excluded.key_value)
+    `,
+    [
+      randomUUID(),
+      projectId,
+      scope,
+      hashSecret(effectiveKey),
+      getSecretPrefix(effectiveKey),
+      scope === "public" ? effectiveKey : null,
+    ],
+  );
+}
+
+async function createDefaultPublicAnalyticsKey(projectId) {
+  const existing = await pool.query(
+    `
+      select key_value
+      from analytics_project_keys
+      where project_id = $1 and scope = 'public' and key_value is not null
+      order by created_at asc
+      limit 1
+    `,
+    [projectId],
+  );
+  const key = existing.rows[0]?.key_value;
+  if (typeof key === "string" && key.trim()) {
+    return key.trim();
+  }
+
+  return `do_public_${projectId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${randomUUID().replaceAll("-", "")}`;
 }
 
 async function ensureDefaultAppStateResources() {

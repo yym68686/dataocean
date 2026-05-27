@@ -11,11 +11,6 @@ export const timeRanges: Array<{ label: string; value: TimeRange }> = [
 export const sectionLabels: Record<AppSection, string> = {
   command: "Command Center",
   dashboards: "Dashboards",
-  "provider-zhupay": "Zhupay",
-  "provider-creem": "Creem",
-  "provider-sub2api": "Sub2API",
-  "provider-nl2pcb": "NL2PCB",
-  "provider-manual": "Manual Revenue",
   datasources: "Data Sources",
   metrics: "Metrics",
   alerts: "Alerts",

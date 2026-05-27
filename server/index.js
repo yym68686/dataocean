@@ -65,6 +65,15 @@ import {
   startZhupayScheduler,
   syncZhupay,
 } from "./zhupay.js";
+import {
+  collectPayload,
+  findCollectProjectBySecret,
+  getAnalyticsClientConfig,
+  getAcquisitionSummary,
+  getAnalyticsStatus,
+  isOriginAllowed,
+  readCollectSecret,
+} from "./analytics.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, "..", "dist");
@@ -81,7 +90,7 @@ app.use(express.json({
 }));
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", process.env.CORS_ORIGIN ?? "*");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-DataOcean-Key");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   if (req.method === "OPTIONS") {
     res.status(204).end();
@@ -140,6 +149,14 @@ const apiSpec = {
     "GET /api/connectors/nl2pcb/users",
     "GET /api/connectors/nl2pcb/jobs",
     "GET /api/connectors/nl2pcb/feedback",
+  ],
+  analytics: [
+    "GET /api/analytics/client-config",
+    "POST /api/collect",
+    "POST /api/collect/batch",
+    "POST /api/webhooks/:source",
+    "GET /api/analytics/status",
+    "GET /api/analytics/acquisition",
   ],
   admin: ["GET /api/admin/users", "DELETE /api/admin/users/:userId", "GET /api/admin/audit-logs"],
 };
@@ -219,6 +236,66 @@ app.get("/api/schema", (_req, res) => {
   res.json(apiSpec);
 });
 
+async function requireCollectProject(req, res, next, allowedScopes) {
+  try {
+    const project = await findCollectProjectBySecret(readCollectSecret(req), { allowedScopes });
+    if (!project) {
+      res.status(401).json({ error: { message: "Invalid DataOcean project key" } });
+      return;
+    }
+    const origin = req.get("origin");
+    if (!(await isOriginAllowed(project.id, origin))) {
+      res.status(403).json({ error: { message: "Origin is not allowed for this project" } });
+      return;
+    }
+    req.analyticsProject = project;
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+function requirePublicCollectProject(req, res, next) {
+  void requireCollectProject(req, res, next, ["public", "server"]);
+}
+
+function requireServerCollectProject(req, res, next) {
+  void requireCollectProject(req, res, next, ["server"]);
+}
+
+app.post("/api/collect", requirePublicCollectProject, asyncRoute(async (req, res) => {
+  assertObject(req.body);
+  res.status(202).json(await collectPayload({ project: req.analyticsProject, payload: req.body, req }));
+}));
+
+app.post("/api/collect/batch", requireServerCollectProject, asyncRoute(async (req, res) => {
+  assertObject(req.body);
+  res.status(202).json(await collectPayload({ project: req.analyticsProject, payload: req.body, req }));
+}));
+
+app.get("/api/analytics/client-config", requireServerCollectProject, asyncRoute(async (req, res) => {
+  res.json(await getAnalyticsClientConfig({ project: req.analyticsProject }));
+}));
+
+app.post("/api/webhooks/:source", requireServerCollectProject, asyncRoute(async (req, res) => {
+  assertObject(req.body);
+  res.status(202).json(await collectPayload({
+    project: req.analyticsProject,
+    payload: {
+      name: "webhook_received",
+      properties: {
+        source: req.params.source,
+        payload: req.body,
+      },
+      context: {
+        path: req.path,
+        source: "webhook",
+      },
+    },
+    req,
+  }));
+}));
+
 app.post("/api/auth/register", asyncRoute(async (req, res) => {
   assertObject(req.body);
   validateCredentials(req.body);
@@ -262,6 +339,19 @@ app.delete("/api/admin/users/:userId", requireAuth, requireAdmin, asyncRoute(asy
 
 app.get("/api/admin/audit-logs", requireAuth, requireAdmin, asyncRoute(async (req, res) => {
   res.json({ auditLogs: await listAuditLogs({ limit: req.query.limit }) });
+}));
+
+app.get("/api/analytics/status", requireAuth, requireAdmin, asyncRoute(async (_req, res) => {
+  res.json(await getAnalyticsStatus());
+}));
+
+app.get("/api/analytics/acquisition", requireAuth, requireAdmin, asyncRoute(async (req, res) => {
+  res.json(await getAcquisitionSummary({
+    projectId: req.query.projectId,
+    from: req.query.from,
+    to: req.query.to,
+    limit: req.query.limit,
+  }));
 }));
 
 app.get("/api/state", requireAuth, asyncRoute(async (_req, res) => {

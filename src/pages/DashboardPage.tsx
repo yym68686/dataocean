@@ -23,6 +23,7 @@ export function DashboardPage({
 }: DashboardPageProps) {
   const { t, tx } = useI18n();
   const activeSources = dataSources.filter((source) => ["live", "polling", "synced"].includes(source.status)).length;
+  const dashboardSource = dashboard.dataSourceId ? dataSources.find((source) => source.id === dashboard.dataSourceId) : undefined;
 
   return (
     <>
@@ -34,6 +35,10 @@ export function DashboardPage({
         <div className="do-query-chip">
           <span className="do-query-label">{t("dashboard.timeRange")}</span>
           <strong>{activeRange.toUpperCase()}</strong>
+        </div>
+        <div className="do-query-chip">
+          <span className="do-query-label">{t("dashboard.source")}</span>
+          <strong>{dashboardSource ? tx(dashboardSource.name) : t("dashboard.multiSource")}</strong>
         </div>
         <div className="do-query-chip">
           <span className="do-query-label">{t("dashboard.activeSources")}</span>

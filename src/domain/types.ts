@@ -3,11 +3,6 @@ export type ThemeMode = "light" | "dark";
 export type AppSection =
   | "command"
   | "dashboards"
-  | "provider-zhupay"
-  | "provider-creem"
-  | "provider-sub2api"
-  | "provider-nl2pcb"
-  | "provider-manual"
   | "datasources"
   | "metrics"
   | "alerts"
@@ -20,6 +15,7 @@ export type DataSourceKind =
   | "postgres"
   | "prometheus"
   | "stripe"
+  | "analytics"
   | "zhupay"
   | "creem"
   | "sub2api"
@@ -29,7 +25,7 @@ export type DataSourceKind =
   | "webhook"
   | "csv";
 
-export type DataSourceStatus = "live" | "synced" | "polling" | "error" | "draft";
+export type DataSourceStatus = "live" | "synced" | "polling" | "error" | "draft" | "waiting";
 
 export type MetricFormat = "currency" | "percent" | "number" | "duration" | "bytes";
 
@@ -51,7 +47,7 @@ export interface DataSource {
   status: DataSourceStatus;
   description: string;
   endpoint: string;
-  auth: "none" | "api-key" | "bearer" | "basic" | "oauth" | "rsa";
+  auth: "none" | "api-key" | "bearer" | "basic" | "oauth" | "rsa" | "server-key";
   refreshIntervalMs: number;
   lastSyncAt: string;
   owner: string;
@@ -134,6 +130,7 @@ export interface Dashboard {
   id: string;
   name: string;
   description: string;
+  dataSourceId?: string;
   teamId: string;
   defaultTimeRange: TimeRange;
   refreshIntervalMs: number;
@@ -222,4 +219,73 @@ export interface ManualRevenueEntry {
   createdBy?: string | null;
   createdByName?: string | null;
   createdByEmail?: string | null;
+}
+
+export interface AnalyticsProjectKeySummary {
+  scope: "public" | "server";
+  prefix: string;
+  lastUsedAt?: string | null;
+}
+
+export interface AnalyticsProjectSummary {
+  id: string;
+  name: string;
+  eventCount: number;
+  lastEventAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  keys: AnalyticsProjectKeySummary[];
+}
+
+export interface AnalyticsStatusResponse {
+  defaultProjectId: string;
+  projects: AnalyticsProjectSummary[];
+}
+
+export interface AcquisitionSourceRow {
+  source: string;
+  landingViews: number;
+  signupStarted: number;
+  signups: number;
+  conversionRate: number | null;
+}
+
+export interface AcquisitionSeriesPoint {
+  ts: string;
+  landingViews: number;
+  signupStarted: number;
+  signups: number;
+}
+
+export interface AcquisitionRecentEvent {
+  eventId: string;
+  name: string;
+  anonymousId?: string | null;
+  userId?: string | null;
+  path?: string | null;
+  source: string;
+  occurredAt?: string | null;
+  receivedAt?: string | null;
+}
+
+export interface AcquisitionSummaryResponse {
+  project: {
+    id: string;
+    name: string;
+  };
+  range: {
+    from: string;
+    to: string;
+  };
+  kpis: {
+    visitors: number;
+    sessions: number;
+    landingViews: number;
+    signupStarted: number;
+    signups: number;
+    conversionRate: number | null;
+  };
+  sources: AcquisitionSourceRow[];
+  series: AcquisitionSeriesPoint[];
+  recentEvents: AcquisitionRecentEvent[];
 }

@@ -1,4 +1,12 @@
-import type { AppData, AuthUser, ChartSpec, ManualRevenueEntry, QueryResult } from "../domain/types";
+import type {
+  AcquisitionSummaryResponse,
+  AnalyticsStatusResponse,
+  AppData,
+  AuthUser,
+  ChartSpec,
+  ManualRevenueEntry,
+  QueryResult,
+} from "../domain/types";
 
 const TOKEN_STORAGE_KEY = "dataocean-session-token";
 
@@ -105,6 +113,28 @@ export const apiClient = {
       defaultDisplayCurrency: string;
       rates: Record<string, Record<string, number>>;
     }>("/api/currency");
+  },
+
+  async getAnalyticsStatus() {
+    return request<AnalyticsStatusResponse>("/api/analytics/status");
+  },
+
+  async getAcquisitionSummary(input: { projectId?: string; from?: string; to?: string; limit?: number } = {}) {
+    const params = new URLSearchParams();
+    if (input.projectId) {
+      params.set("projectId", input.projectId);
+    }
+    if (input.from) {
+      params.set("from", input.from);
+    }
+    if (input.to) {
+      params.set("to", input.to);
+    }
+    if (input.limit) {
+      params.set("limit", String(input.limit));
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<AcquisitionSummaryResponse>(`/api/analytics/acquisition${suffix}`);
   },
 
   async executePanel(panel: ChartSpec) {
