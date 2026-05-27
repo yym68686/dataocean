@@ -568,18 +568,19 @@ async function updateAttribution(projectId, event) {
 }
 
 async function findTouchEvent(projectId, event, direction) {
-  const clauses = ["project_id = $1", "occurred_at <= $2", "name in ('landing_view', 'page_view', 'signup_started')"];
+  const clauses = [
+    "project_id = $1",
+    "occurred_at <= $2",
+    "name in ('landing_view', 'page_view', 'signup_started')",
+    "user_id is null",
+  ];
   const params = [projectId, event.occurredAt.toISOString()];
 
-  if (event.anonymousId) {
-    params.push(event.anonymousId);
-    clauses.push(`anonymous_id = $${params.length}`);
-  } else if (event.userId) {
-    params.push(event.userId);
-    clauses.push(`user_id = $${params.length}`);
-  } else {
+  if (!event.anonymousId) {
     return null;
   }
+  params.push(event.anonymousId);
+  clauses.push(`anonymous_id = $${params.length}`);
 
   const result = await pool.query(
     `
