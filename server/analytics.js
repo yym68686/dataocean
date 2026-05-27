@@ -7,6 +7,26 @@ const DEFAULT_PROJECT_NAME = process.env.DATAOCEAN_DEFAULT_PROJECT_NAME?.trim() 
 const DEFAULT_PUBLIC_KEY = process.env.DATAOCEAN_PUBLIC_WRITE_KEY?.trim() || "";
 const DEFAULT_SERVER_KEY = process.env.DATAOCEAN_SERVER_KEY?.trim() || "";
 const MAX_BATCH_SIZE = 100;
+const SENSITIVE_ANALYTICS_QUERY_KEYS = new Set([
+  "api_trade_no",
+  "buyer",
+  "code",
+  "money",
+  "name",
+  "out_trade_no",
+  "param",
+  "pid",
+  "request_id",
+  "requestid",
+  "sign",
+  "sign_type",
+  "state",
+  "timestamp",
+  "token",
+  "trade_no",
+  "trade_status",
+  "type",
+]);
 
 export async function ensureDefaultAnalyticsProject() {
   await pool.query(
@@ -272,11 +292,11 @@ export async function getAcquisitionSummary({ projectId = DEFAULT_PROJECT_ID, fr
   const kpisResult = await pool.query(
     `
       select
-        count(*) filter (where name = 'landing_view')::int as landing_views,
-        count(*) filter (where name = 'signup_started')::int as signup_started,
+        count(*) filter (where name = 'landing_view' and user_id is null)::int as landing_views,
+        count(*) filter (where name = 'signup_started' and user_id is null)::int as signup_started,
         count(*) filter (where name = 'signup_completed')::int as signup_events,
-        count(distinct nullif(anonymous_id, '')) filter (where name in ('page_view', 'landing_view'))::int as visitors,
-        count(distinct nullif(session_id, '')) filter (where name in ('page_view', 'landing_view'))::int as sessions
+        count(distinct nullif(anonymous_id, '')) filter (where name in ('page_view', 'landing_view') and user_id is null)::int as visitors,
+        count(distinct nullif(session_id, '')) filter (where name in ('page_view', 'landing_view') and user_id is null)::int as sessions
       from analytics_events
       where project_id = $1 and occurred_at >= $2 and occurred_at <= $3
     `,
@@ -301,13 +321,13 @@ export async function getAcquisitionSummary({ projectId = DEFAULT_PROJECT_ID, fr
       with landing as (
         select source_key(source, referrer_host) as source_key, count(*)::int as landing_views
         from analytics_events
-        where project_id = $1 and name = 'landing_view' and occurred_at >= $2 and occurred_at <= $3
+        where project_id = $1 and name = 'landing_view' and user_id is null and occurred_at >= $2 and occurred_at <= $3
         group by source_key(source, referrer_host)
       ),
       starts as (
         select source_key(source, referrer_host) as source_key, count(*)::int as signup_started
         from analytics_events
-        where project_id = $1 and name = 'signup_started' and occurred_at >= $2 and occurred_at <= $3
+        where project_id = $1 and name = 'signup_started' and user_id is null and occurred_at >= $2 and occurred_at <= $3
         group by source_key(source, referrer_host)
       ),
       signups as (
@@ -341,8 +361,8 @@ export async function getAcquisitionSummary({ projectId = DEFAULT_PROJECT_ID, fr
       with event_series as (
         select
           date_trunc('day', occurred_at) as bucket,
-          count(*) filter (where name = 'landing_view')::int as landing_views,
-          count(*) filter (where name = 'signup_started')::int as signup_started,
+          count(*) filter (where name = 'landing_view' and user_id is null)::int as landing_views,
+          count(*) filter (where name = 'signup_started' and user_id is null)::int as signup_started,
           count(*) filter (where name = 'signup_completed')::int as signup_events
         from analytics_events
         where project_id = $1 and occurred_at >= $2 and occurred_at <= $3
@@ -414,7 +434,7 @@ export async function getAcquisitionSummary({ projectId = DEFAULT_PROJECT_ID, fr
       name: row.name,
       anonymousId: row.anonymous_id,
       userId: row.user_id,
-      path: row.path,
+      path: sanitizeAnalyticsUrl(row.path, "path"),
       source: sourceKey(row.source, row.referrer_host),
       occurredAt: toIso(row.occurred_at),
       receivedAt: toIso(row.received_at),
@@ -601,7 +621,7 @@ function normalizePayloadEvents(payload) {
 }
 
 function normalizeEvent(rawEvent, { project, req, receivedAt }) {
-  const raw = rawEvent && typeof rawEvent === "object" && !Array.isArray(rawEvent) ? { ...rawEvent } : {};
+  const raw = sanitizeRawEvent(rawEvent && typeof rawEvent === "object" && !Array.isArray(rawEvent) ? { ...rawEvent } : {});
   delete raw.writeKey;
   delete raw.serverKey;
   delete raw.key;
@@ -614,9 +634,12 @@ function normalizeEvent(rawEvent, { project, req, receivedAt }) {
   };
   const rawUtm = isPlainObject(raw.utm) ? raw.utm : isPlainObject(context.utm) ? context.utm : {};
   const eventName = cleanString(raw.name) ?? cleanString(raw.event) ?? cleanString(raw.type) ?? "event";
-  const url = cleanString(raw.url) ?? cleanString(context.url);
-  const path = cleanString(raw.path) ?? cleanString(context.path) ?? pathFromUrl(url);
-  const referrer = cleanString(raw.referrer) ?? cleanString(context.referrer);
+  const rawUrl = cleanString(raw.url) ?? cleanString(context.url);
+  const url = sanitizeAnalyticsUrl(rawUrl, "absolute");
+  const rawPath = cleanString(raw.path) ?? cleanString(context.path) ?? pathFromUrl(rawUrl);
+  const path = sanitizeAnalyticsUrl(rawPath, "path") ?? pathFromUrl(url);
+  const rawReferrer = cleanString(raw.referrer) ?? cleanString(context.referrer);
+  const referrer = sanitizeAnalyticsUrl(rawReferrer, "absolute");
   const referrerHost = normalizeHost(referrer);
   const source = cleanString(raw.source) ?? cleanString(rawUtm.source) ?? cleanString(rawUtm.utm_source) ?? sourceKey(null, referrerHost);
   const medium = cleanString(raw.medium) ?? cleanString(rawUtm.medium) ?? cleanString(rawUtm.utm_medium) ?? (referrerHost ? "referral" : "direct");
@@ -671,6 +694,83 @@ function parseDate(value) {
   }
   const parsed = new Date(String(value));
   return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function sanitizeRawEvent(raw) {
+  const sanitized = { ...raw };
+  if (typeof sanitized.url === "string") {
+    sanitized.url = sanitizeAnalyticsUrl(sanitized.url, "absolute");
+  }
+  if (typeof sanitized.path === "string") {
+    sanitized.path = sanitizeAnalyticsUrl(sanitized.path, "path");
+  }
+  if (typeof sanitized.referrer === "string") {
+    sanitized.referrer = sanitizeAnalyticsUrl(sanitized.referrer, "absolute");
+  }
+  if (isPlainObject(sanitized.context)) {
+    sanitized.context = sanitizeAnalyticsContext(sanitized.context);
+  }
+  if (isPlainObject(sanitized.properties)) {
+    sanitized.properties = sanitizeAnalyticsProperties(sanitized.properties);
+  }
+  return sanitized;
+}
+
+function sanitizeAnalyticsContext(context) {
+  const sanitized = { ...context };
+  if (typeof sanitized.url === "string") {
+    sanitized.url = sanitizeAnalyticsUrl(sanitized.url, "absolute");
+  }
+  if (typeof sanitized.path === "string") {
+    sanitized.path = sanitizeAnalyticsUrl(sanitized.path, "path");
+  }
+  if (typeof sanitized.referrer === "string") {
+    sanitized.referrer = sanitizeAnalyticsUrl(sanitized.referrer, "absolute");
+  }
+  if (isPlainObject(sanitized.gateway)) {
+    sanitized.gateway = { ...sanitized.gateway };
+    if (typeof sanitized.gateway.referer === "string") {
+      sanitized.gateway.referer = sanitizeAnalyticsUrl(sanitized.gateway.referer, "absolute");
+    }
+  }
+  return sanitized;
+}
+
+function sanitizeAnalyticsProperties(properties) {
+  const sanitized = { ...properties };
+  if (typeof sanitized.url === "string") {
+    sanitized.url = sanitizeAnalyticsUrl(sanitized.url, "absolute");
+  }
+  if (typeof sanitized.path === "string") {
+    sanitized.path = sanitizeAnalyticsUrl(sanitized.path, "path");
+  }
+  if (typeof sanitized.referrer === "string") {
+    sanitized.referrer = sanitizeAnalyticsUrl(sanitized.referrer, "absolute");
+  }
+  return sanitized;
+}
+
+function sanitizeAnalyticsUrl(value, output) {
+  const raw = cleanString(value);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const isAbsoluteUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw);
+    const url = new URL(raw, "https://dataocean.local");
+    for (const key of Array.from(url.searchParams.keys())) {
+      if (SENSITIVE_ANALYTICS_QUERY_KEYS.has(key.toLowerCase())) {
+        url.searchParams.delete(key);
+      }
+    }
+    const path = `${url.pathname}${url.search}`.slice(0, 1024);
+    if (output === "path" || !isAbsoluteUrl) {
+      return path;
+    }
+    return url.toString().slice(0, 2048);
+  } catch {
+    return raw;
+  }
 }
 
 function coerceLimit(value) {
