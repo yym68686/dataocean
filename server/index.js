@@ -66,6 +66,15 @@ import {
   syncZhupay,
 } from "./zhupay.js";
 import {
+  getYizhifuStatus,
+  getYizhifuSummary,
+  handleYizhifuNotify,
+  listYizhifuOrders,
+  queryYizhifuMetric,
+  startYizhifuScheduler,
+  syncYizhifu,
+} from "./yizhifu.js";
+import {
   collectPayload,
   findCollectProjectBySecret,
   getAnalyticsClientConfig,
@@ -132,6 +141,12 @@ const apiSpec = {
     "GET /api/connectors/zhupay/summary",
     "GET /api/connectors/zhupay/orders",
     "GET /api/connectors/zhupay/notify",
+    "GET /api/connectors/yizhifu/status",
+    "POST /api/connectors/yizhifu/sync",
+    "GET /api/connectors/yizhifu/scheduler",
+    "GET /api/connectors/yizhifu/summary",
+    "GET /api/connectors/yizhifu/orders",
+    "GET /api/connectors/yizhifu/notify",
     "GET /api/connectors/creem/status",
     "POST /api/connectors/creem/sync",
     "GET /api/connectors/creem/scheduler",
@@ -385,6 +400,11 @@ app.post("/api/query/panel", requireAuth, asyncRoute(async (req, res) => {
     return;
   }
 
+  if (dataSource.kind === "yizhifu") {
+    res.json(await queryYizhifuMetric({ dataSource, metric, query: panel.query }));
+    return;
+  }
+
   if (dataSource.kind === "creem") {
     res.json(await queryCreemMetric({ dataSource, metric, query: panel.query }));
     return;
@@ -443,6 +463,35 @@ app.post("/api/connectors/zhupay/sync", requireAuth, requireAdmin, asyncRoute(as
 
 app.get("/api/connectors/zhupay/notify", asyncRoute(async (req, res) => {
   await handleZhupayNotify(req.query);
+  res.type("text/plain").send("success");
+}));
+
+app.get("/api/connectors/yizhifu/status", requireAuth, asyncRoute(async (_req, res) => {
+  res.json(await getYizhifuStatus());
+}));
+
+app.get("/api/connectors/yizhifu/scheduler", requireAuth, asyncRoute(async (_req, res) => {
+  const status = await getYizhifuStatus();
+  res.json(status.scheduler);
+}));
+
+app.get("/api/connectors/yizhifu/summary", requireAuth, asyncRoute(async (_req, res) => {
+  res.json(await getYizhifuSummary());
+}));
+
+app.get("/api/connectors/yizhifu/orders", requireAuth, asyncRoute(async (req, res) => {
+  res.json({ orders: await listYizhifuOrders({ limit: req.query.limit }) });
+}));
+
+app.post("/api/connectors/yizhifu/sync", requireAuth, requireAdmin, asyncRoute(async (req, res) => {
+  res.json(await syncYizhifu({
+    maxPages: req.body?.maxPages,
+    limit: req.body?.limit,
+  }));
+}));
+
+app.get("/api/connectors/yizhifu/notify", asyncRoute(async (req, res) => {
+  await handleYizhifuNotify(req.query);
   res.type("text/plain").send("success");
 }));
 
@@ -598,6 +647,7 @@ await migrateDatabase();
 app.listen(port, "0.0.0.0", () => {
   console.log(`DataOcean API listening on ${port}`);
   startZhupayScheduler();
+  startYizhifuScheduler();
   startCreemScheduler();
   startNl2PcbScheduler();
 });

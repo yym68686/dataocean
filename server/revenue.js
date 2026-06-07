@@ -88,6 +88,29 @@ async function createAggregateRevenueTrendResult({ dataSource, metric, timeRange
     });
   }
 
+  const yizhifuRate = getFxRate("CNY", reportingCurrency);
+  if (yizhifuRate === null) {
+    warnings.push(`Missing DATAOCEAN_FX_CNY_TO_${reportingCurrency}; Yizhifu is excluded from aggregate total.`);
+  } else {
+    const yizhifu = await pool.query(
+      `
+        select coalesce(endtime, addtime, updated_at) as paid_at, money
+        from yizhifu_orders
+        where status = 1 and coalesce(endtime, addtime, updated_at) >= $1
+        order by paid_at asc
+      `,
+      [start.toISOString()],
+    );
+    addRowsToBuckets({
+      rows: yizhifu.rows,
+      seriesName: "Yizhifu",
+      stepSeconds,
+      rate: yizhifuRate,
+      seriesBuckets,
+      totalBuckets,
+    });
+  }
+
   const creem = await pool.query(
     `
       select source_created_at as paid_at,
@@ -234,6 +257,41 @@ async function createAggregateRevenueEntriesResult({ dataSource, metric, timeRan
     }));
   }
 
+  const yizhifuRate = getFxRate("CNY", reportingCurrency);
+  if (yizhifuRate === null) {
+    warnings.push(`Missing DATAOCEAN_FX_CNY_TO_${reportingCurrency}; Yizhifu rows do not have normalized values.`);
+  }
+  const yizhifu = await pool.query(
+    `
+      select
+        coalesce(endtime, addtime, updated_at) as received_at,
+        trade_no,
+        out_trade_no,
+        type,
+        name,
+        money
+      from yizhifu_orders
+      where status = 1
+        and coalesce(endtime, addtime, updated_at) >= $1
+      order by received_at desc
+      limit 200
+    `,
+    [start.toISOString()],
+  );
+  for (const row of yizhifu.rows) {
+    entries.push(createRevenueEntryRow({
+      receivedAt: row.received_at,
+      provider: "Yizhifu",
+      channel: row.type || "payment",
+      amount: row.money,
+      currency: "CNY",
+      normalizedRate: yizhifuRate,
+      reportingCurrency,
+      note: row.name || row.out_trade_no || row.trade_no || "",
+      sourceId: row.trade_no,
+    }));
+  }
+
   const creem = await pool.query(
     `
       select
@@ -370,6 +428,26 @@ async function getRevenueTotals(reportingCurrency) {
   } else {
     totalRevenue += Number(row.total_revenue ?? 0) * zhupayRate;
     todayRevenue += Number(row.today_revenue ?? 0) * zhupayRate;
+  }
+
+  const yizhifuRate = getFxRate("CNY", reportingCurrency);
+  const yizhifu = await pool.query(`
+      select
+        coalesce(sum(money), 0)::numeric as total_revenue,
+        coalesce(sum(money) filter (where coalesce(endtime, addtime, updated_at) >= date_trunc('day', now())), 0)::numeric as today_revenue,
+        count(*)::int as transaction_count
+      from yizhifu_orders
+      where status = 1
+    `);
+  const yizhifuRow = yizhifu.rows[0] ?? {};
+  transactionCount += Number(yizhifuRow.transaction_count ?? 0);
+  hasAnyData = hasAnyData || Number(yizhifuRow.transaction_count ?? 0) > 0;
+
+  if (yizhifuRate === null) {
+    warnings.push(`Missing DATAOCEAN_FX_CNY_TO_${reportingCurrency}; Yizhifu is excluded from aggregate revenue.`);
+  } else {
+    totalRevenue += Number(yizhifuRow.total_revenue ?? 0) * yizhifuRate;
+    todayRevenue += Number(yizhifuRow.today_revenue ?? 0) * yizhifuRate;
   }
 
   const creem = await pool.query(`

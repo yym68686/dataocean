@@ -100,6 +100,17 @@ export function DataSourcesPage({ dataSources, metrics, dashboards, theme }: Dat
         return;
       }
 
+      if (source.kind === "yizhifu") {
+        const status = await apiClient.getYizhifuStatus();
+        setTestResults((current) => ({
+          ...current,
+          [source.id]: status.configured
+            ? t("datasources.yizhifuConfigured", { count: status.orderCount })
+            : t("datasources.yizhifuMissing"),
+        }));
+        return;
+      }
+
       if (source.kind === "analytics") {
         const status = await apiClient.getAnalyticsStatus();
         const project = status.projects.find((item) => item.id === source.id);

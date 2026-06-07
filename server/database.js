@@ -128,6 +128,44 @@ export async function migrateDatabase() {
       updated_at timestamptz not null default now()
     );
 
+    create table if not exists yizhifu_merchant_snapshots (
+      id bigserial primary key,
+      captured_at timestamptz not null default now(),
+      pid text,
+      status integer,
+      pay_status integer,
+      settle_status integer,
+      balance numeric(14, 2),
+      order_num integer,
+      order_num_today integer,
+      order_num_lastday integer,
+      order_money_today numeric(14, 2),
+      order_money_lastday numeric(14, 2),
+      raw jsonb not null
+    );
+
+    create table if not exists yizhifu_orders (
+      trade_no text primary key,
+      out_trade_no text,
+      api_trade_no text,
+      pid text,
+      type text,
+      status integer,
+      trade_status text,
+      name text,
+      money numeric(14, 2),
+      refund_money numeric(14, 2),
+      param text,
+      buyer text,
+      clientip text,
+      addtime timestamptz,
+      endtime timestamptz,
+      source text not null,
+      raw jsonb not null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
     create table if not exists creem_store_snapshots (
       id bigserial primary key,
       captured_at timestamptz not null default now(),
@@ -375,6 +413,9 @@ export async function migrateDatabase() {
     create index if not exists zhupay_snapshots_captured_at_idx on zhupay_merchant_snapshots (captured_at desc);
     create index if not exists zhupay_orders_endtime_idx on zhupay_orders (endtime desc);
     create index if not exists zhupay_orders_status_idx on zhupay_orders (status);
+    create index if not exists yizhifu_snapshots_captured_at_idx on yizhifu_merchant_snapshots (captured_at desc);
+    create index if not exists yizhifu_orders_endtime_idx on yizhifu_orders (endtime desc);
+    create index if not exists yizhifu_orders_status_idx on yizhifu_orders (status);
     create index if not exists creem_snapshots_captured_at_idx on creem_store_snapshots (captured_at desc);
     create index if not exists creem_transactions_source_created_at_idx on creem_transactions (source_created_at desc);
     create index if not exists creem_transactions_status_idx on creem_transactions (status);

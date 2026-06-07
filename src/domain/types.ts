@@ -17,6 +17,7 @@ export type DataSourceKind =
   | "stripe"
   | "analytics"
   | "zhupay"
+  | "yizhifu"
   | "creem"
   | "sub2api"
   | "nl2pcb"

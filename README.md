@@ -188,6 +188,15 @@ Zhupay:
 - `GET /api/connectors/zhupay/orders`
 - `GET /api/connectors/zhupay/notify`
 
+Yizhifu:
+
+- `GET /api/connectors/yizhifu/status`
+- `POST /api/connectors/yizhifu/sync`
+- `GET /api/connectors/yizhifu/scheduler`
+- `GET /api/connectors/yizhifu/summary`
+- `GET /api/connectors/yizhifu/orders`
+- `GET /api/connectors/yizhifu/notify`
+
 Creem:
 
 - `GET /api/connectors/creem/status`
@@ -274,6 +283,43 @@ through:
 ```http
 GET /api/connectors/zhupay/scheduler
 ```
+
+## Yizhifu Setup
+
+The Yizhifu connector is server-side only. Browser code never receives the
+merchant private key.
+
+Set these environment variables in Fugue:
+
+```text
+YIZHIFU_BASE_URL=https://vip1.zhunfu.cn
+YIZHIFU_PID=<merchant id>
+YIZHIFU_MERCHANT_PRIVATE_KEY=<merchant RSA private key>
+YIZHIFU_PLATFORM_PUBLIC_KEY=<platform RSA public key>
+YIZHIFU_SYNC_ENABLED=true
+YIZHIFU_SYNC_INTERVAL_MS=60000
+YIZHIFU_SYNC_MAX_PAGES=4
+YIZHIFU_SYNC_LIMIT=50
+```
+
+After setting them, restart/redeploy the app, then call:
+
+```bash
+curl -X POST https://dataocean.fugue.pro/api/connectors/yizhifu/sync \
+  -H "Authorization: Bearer $DATAOCEAN_ADMIN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"maxPages":4,"limit":50}'
+```
+
+Configure Yizhifu `notify_url` to:
+
+```text
+https://dataocean.fugue.pro/api/connectors/yizhifu/notify
+```
+
+The callback verifies the Yizhifu RSA signature and stores only successful paid
+orders. If changing the existing payment application is difficult, leave the
+current callback untouched and rely on `YIZHIFU_SYNC_ENABLED=true` scheduled sync.
 
 ## Creem Setup
 

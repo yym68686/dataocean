@@ -156,6 +156,18 @@ export const apiClient = {
     }>("/api/connectors/zhupay/status");
   },
 
+  async getYizhifuStatus() {
+    return request<{
+      configured: boolean;
+      pidConfigured: boolean;
+      merchantPrivateKeyConfigured: boolean;
+      platformPublicKeyConfigured: boolean;
+      orderCount: number;
+      lastSnapshotAt?: string | null;
+      lastOrderAt?: string | null;
+    }>("/api/connectors/yizhifu/status");
+  },
+
   async getCreemStatus() {
     return request<{
       configured: boolean;
