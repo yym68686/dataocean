@@ -271,9 +271,10 @@ export async function createRevenueTrendResult({ dataSource, metric, timeRange }
     `,
     [start.toISOString()],
   );
+  const snapshotAdjustments = await getYizhifuSnapshotAdjustmentRows({ start });
   const buckets = new Map();
 
-  for (const row of result.rows) {
+  for (const row of [...result.rows, ...snapshotAdjustments]) {
     const seconds = Math.floor(new Date(row.paid_at).getTime() / 1000);
     const bucket = Math.floor(seconds / stepSeconds) * stepSeconds;
     buckets.set(bucket, (buckets.get(bucket) ?? 0) + Number(row.money ?? 0));
@@ -363,12 +364,72 @@ export async function getYizhifuSummary() {
       from yizhifu_orders
     `,
   );
+  const snapshotAdjustments = await getYizhifuSnapshotAdjustmentRows();
+  const adjustmentRevenue = snapshotAdjustments.reduce((sum, row) => sum + Number(row.money ?? 0), 0);
+  const adjustmentOrders = snapshotAdjustments.reduce((sum, row) => sum + Number(row.orders ?? 0), 0);
 
   return {
     snapshot,
-    totalRevenue: Number(revenue.rows[0]?.total_revenue ?? 0),
-    paidOrders: Number(revenue.rows[0]?.paid_orders ?? 0),
+    totalRevenue: Number(revenue.rows[0]?.total_revenue ?? 0) + adjustmentRevenue,
+    paidOrders: Number(revenue.rows[0]?.paid_orders ?? 0) + adjustmentOrders,
   };
+}
+
+export async function getYizhifuSnapshotAdjustmentRows({ start = null } = {}) {
+  const startIso = start ? start.toISOString() : null;
+  const result = await pool.query(
+    `
+      with snapshot_candidates as (
+        select
+          captured_at::date as day,
+          max(coalesce(order_money_today, 0)) as revenue,
+          max(coalesce(order_num_today, 0)) as orders
+        from yizhifu_merchant_snapshots
+        where ($1::timestamptz is null or captured_at::date >= $1::timestamptz::date)
+        group by captured_at::date
+
+        union all
+
+        select
+          (captured_at::date - 1) as day,
+          max(coalesce(order_money_lastday, 0)) as revenue,
+          max(coalesce(order_num_lastday, 0)) as orders
+        from yizhifu_merchant_snapshots
+        where ($1::timestamptz is null or (captured_at::date - 1) >= $1::timestamptz::date)
+        group by (captured_at::date - 1)
+      ),
+      daily_snapshots as (
+        select
+          day,
+          max(revenue) as snapshot_revenue,
+          max(orders) as snapshot_orders
+        from snapshot_candidates
+        group by day
+      ),
+      daily_paid_orders as (
+        select
+          coalesce(endtime, addtime, updated_at)::date as day,
+          coalesce(sum(money), 0) as paid_revenue,
+          count(*)::int as paid_orders
+        from yizhifu_orders
+        where status = 1
+          and ($1::timestamptz is null or coalesce(endtime, addtime, updated_at)::date >= $1::timestamptz::date)
+        group by coalesce(endtime, addtime, updated_at)::date
+      )
+      select
+        daily_snapshots.day::text as day,
+        daily_snapshots.day::timestamp as paid_at,
+        greatest(daily_snapshots.snapshot_revenue - coalesce(daily_paid_orders.paid_revenue, 0), 0)::numeric as money,
+        greatest(daily_snapshots.snapshot_orders - coalesce(daily_paid_orders.paid_orders, 0), 0)::int as orders
+      from daily_snapshots
+      left join daily_paid_orders on daily_paid_orders.day = daily_snapshots.day
+      where daily_snapshots.snapshot_revenue > coalesce(daily_paid_orders.paid_revenue, 0)
+      order by daily_snapshots.day asc
+    `,
+    [startIso],
+  );
+
+  return result.rows;
 }
 
 async function callYizhifu(path, params) {
