@@ -547,6 +547,7 @@ function mergeDefaultStateResources(state) {
   changed = changed || !Array.isArray(state.dashboards);
 
   const dashboards = mergeDefaultsById(dashboardBase, defaultAppState.dashboards);
+  const reconciledDashboards = reconcileDefaultDashboardUpdates(dashboards.items);
   const dataSources = mergeDefaultsById(
     Array.isArray(state.dataSources) ? state.dataSources : defaultAppState.dataSources,
     defaultAppState.dataSources,
@@ -563,6 +564,7 @@ function mergeDefaultStateResources(state) {
     || !Array.isArray(state.alerts)
     || !Array.isArray(state.templates)
     || dashboards.changed
+    || reconciledDashboards.changed
     || dataSources.changed
     || metrics.changed
     || alerts.changed
@@ -575,12 +577,42 @@ function mergeDefaultStateResources(state) {
       ...state,
       dataSources: dataSources.items,
       metrics: metrics.items,
-      dashboards: dashboards.items,
-      activeDashboardId: state.activeDashboardId ?? state.dashboard?.id ?? dashboards.items[0]?.id,
+      dashboards: reconciledDashboards.items,
+      activeDashboardId: state.activeDashboardId ?? state.dashboard?.id ?? reconciledDashboards.items[0]?.id,
       alerts: alerts.items,
       templates: templates.items,
     },
   };
+}
+
+function reconcileDefaultDashboardUpdates(items) {
+  const commandCenterDefault = defaultAppState.dashboards.find((dashboard) => dashboard.id === "dashboard-command-center");
+  if (!commandCenterDefault) {
+    return { items, changed: false };
+  }
+
+  let changed = false;
+  const defaultPanelIds = new Set(commandCenterDefault.panels.map((panel) => panel.id));
+  const reconciled = items.map((dashboard) => {
+    if (dashboard?.id !== commandCenterDefault.id || dashboard.defaultTimeRange !== "1m") {
+      return dashboard;
+    }
+
+    const panels = Array.isArray(dashboard.panels) ? dashboard.panels : [];
+    const hasDefaultPanels = panels.length === defaultPanelIds.size
+      && panels.every((panel) => defaultPanelIds.has(panel?.id));
+    if (!hasDefaultPanels) {
+      return dashboard;
+    }
+
+    changed = true;
+    return {
+      ...dashboard,
+      defaultTimeRange: commandCenterDefault.defaultTimeRange,
+    };
+  });
+
+  return { items: reconciled, changed };
 }
 
 function mergeDefaultsById(items, defaults) {

@@ -1118,7 +1118,7 @@ export const dashboards: Dashboard[] = [
     name: "Command Center",
     description: "Aggregated revenue cockpit across connected providers.",
     teamId: "team-core",
-    defaultTimeRange: "1m",
+    defaultTimeRange: "all",
     refreshIntervalMs: 60000,
     panels: aggregatePanels,
   },
