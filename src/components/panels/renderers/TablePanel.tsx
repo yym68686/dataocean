@@ -73,6 +73,9 @@ function formatCell(
     return "--";
   }
   if (column.type === "time") {
+    if (row[`${column.key}_date_only`] === true) {
+      return formatDateOnly(typeof value === "number" ? value : String(value), locale);
+    }
     return formatDateTime(typeof value === "number" ? value : String(value), locale);
   }
   if (column.type === "number") {
@@ -93,6 +96,18 @@ function isCurrencyAmountColumn(row: QueryRow, column: QueryColumn) {
     return false;
   }
   return ["amount", "money", "value"].includes(column.key);
+}
+
+function formatDateOnly(value: string | number, locale: string) {
+  const date = typeof value === "number"
+    ? new Date(value < 1_000_000_000_000 ? value * 1000 : value)
+    : new Date(value);
+
+  return new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
 function createRowKey(row: QueryRow, index: number) {

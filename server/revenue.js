@@ -293,6 +293,22 @@ async function createAggregateRevenueEntriesResult({ dataSource, metric, timeRan
       sourceId: row.trade_no,
     }));
   }
+  const yizhifuSnapshotAdjustments = await getYizhifuSnapshotAdjustmentRows({ start });
+  for (const row of yizhifuSnapshotAdjustments) {
+    entries.push(createRevenueEntryRow({
+      receivedAt: row.paid_at,
+      receivedAtDateOnly: true,
+      provider: "Yizhifu",
+      channel: "merchant snapshot",
+      amount: row.money,
+      currency: "CNY",
+      normalizedRate: yizhifuRate,
+      reportingCurrency,
+      note: `Daily Yizhifu merchant revenue snapshot · ${Number(row.orders ?? 0)} orders`,
+      sourceId: `snapshot:${row.day}`,
+    }));
+  }
+
   const creem = await pool.query(
     `
       select
@@ -578,7 +594,7 @@ function serializeBuckets(buckets, series) {
     .map(([timestamp, value]) => ({ timestamp, series, value: roundMoney(value) }));
 }
 
-function createRevenueEntryRow({ receivedAt, provider, channel, amount, currency, normalizedRate, reportingCurrency, note, sourceId }) {
+function createRevenueEntryRow({ receivedAt, receivedAtDateOnly = false, provider, channel, amount, currency, normalizedRate, reportingCurrency, note, sourceId }) {
   const value = Number(amount ?? 0);
   const row = {
     id: `${provider}:${sourceId ?? receivedAt ?? Math.random()}`,
@@ -590,6 +606,9 @@ function createRevenueEntryRow({ receivedAt, provider, channel, amount, currency
     note: String(note || ""),
   };
 
+  if (receivedAtDateOnly) {
+    row.received_at_date_only = true;
+  }
   if (normalizedRate !== null) {
     row.normalized_value = roundMoney(value * normalizedRate);
   }
