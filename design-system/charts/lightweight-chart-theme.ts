@@ -100,13 +100,19 @@ function formatChartTime(time: unknown, locale: string) {
   if (!date) {
     return "";
   }
-  return new Intl.DateTimeFormat(locale, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  return new Intl.DateTimeFormat(locale, isDateOnlyTime(time)
+    ? {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }
+    : {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
 }
 
 function toLocalDate(time: unknown) {
@@ -114,6 +120,10 @@ function toLocalDate(time: unknown) {
     return new Date(time * 1000);
   }
   if (typeof time === "string") {
+    if (isDateOnlyTime(time)) {
+      const [year, month, day] = time.split("-").map(Number);
+      return new Date(year, month - 1, day);
+    }
     return new Date(time);
   }
   if (time && typeof time === "object" && "year" in time && "month" in time && "day" in time) {
@@ -121,6 +131,11 @@ function toLocalDate(time: unknown) {
     return new Date(businessDay.year, businessDay.month - 1, businessDay.day);
   }
   return undefined;
+}
+
+function isDateOnlyTime(time: unknown) {
+  return (typeof time === "string" && /^\d{4}-\d{2}-\d{2}$/.test(time))
+    || Boolean(time && typeof time === "object" && "year" in time && "month" in time && "day" in time);
 }
 
 function getRuntimeLocale() {

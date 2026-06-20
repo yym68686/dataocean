@@ -257,13 +257,14 @@ function createChartSeries(
   }
 
   const timeline = createDenseTimeline(Array.from(allTimes), timeRange);
+  const usesDailyBuckets = isDailyTimeline(timeline);
 
   return Array.from(byName.entries())
     .sort(([left], [right]) => compareSeriesNames(left, right))
     .map(([name, values]) => ({
       name,
       data: timeline.map((time) => ({
-        time: time as Time,
+        time: toChartTime(time, usesDailyBuckets),
         value: values.get(time) ?? 0,
       })),
     }));
@@ -309,6 +310,23 @@ function inferStepSeconds(times: number[], timeRange: TimeRange) {
   }
 
   return smallestDiff;
+}
+
+function isDailyTimeline(times: number[]) {
+  return times.length > 0 && times.every((time) => time % 86400 === 0);
+}
+
+function toChartTime(time: number, usesDailyBuckets: boolean): Time {
+  if (!usesDailyBuckets) {
+    return time as Time;
+  }
+
+  const date = new Date(time * 1000);
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+  } as Time;
 }
 
 function getFallbackStepSeconds(timeRange: TimeRange) {

@@ -6,7 +6,6 @@ import {
   getSub2ApiRevenueEntryRows,
   getSub2ApiSummary,
 } from "./sub2api.js";
-import { getYizhifuSnapshotAdjustmentRows } from "./yizhifu.js";
 
 export async function queryRevenueMetric({ dataSource, metric, query }) {
   if (metric.key === "aggregate_revenue_trend") {
@@ -102,9 +101,8 @@ async function createAggregateRevenueTrendResult({ dataSource, metric, timeRange
       `,
       [start.toISOString()],
     );
-    const yizhifuSnapshotAdjustments = await getYizhifuSnapshotAdjustmentRows({ start });
     addRowsToBuckets({
-      rows: [...yizhifu.rows, ...yizhifuSnapshotAdjustments],
+      rows: yizhifu.rows,
       seriesName: "Yizhifu",
       stepSeconds,
       rate: yizhifuRate,
@@ -293,21 +291,6 @@ async function createAggregateRevenueEntriesResult({ dataSource, metric, timeRan
       sourceId: row.trade_no,
     }));
   }
-  const yizhifuSnapshotAdjustments = await getYizhifuSnapshotAdjustmentRows({ start });
-  for (const row of yizhifuSnapshotAdjustments) {
-    entries.push(createRevenueEntryRow({
-      receivedAt: row.paid_at,
-      provider: "Yizhifu",
-      channel: "merchant snapshot",
-      amount: row.money,
-      currency: "CNY",
-      normalizedRate: yizhifuRate,
-      reportingCurrency,
-      note: "Daily merchant revenue snapshot",
-      sourceId: `snapshot:${row.day}`,
-    }));
-  }
-
   const creem = await pool.query(
     `
       select
@@ -450,28 +433,23 @@ async function getRevenueTotals(reportingCurrency) {
   const yizhifu = await pool.query(`
       select
         coalesce(sum(money), 0)::numeric as total_revenue,
-        coalesce(sum(money) filter (where coalesce(endtime, addtime, updated_at) >= date_trunc('day', now())), 0)::numeric as today_revenue,
+        coalesce(sum(money) filter (
+          where (coalesce(endtime, addtime, updated_at) at time zone 'Asia/Shanghai')::date = (now() at time zone 'Asia/Shanghai')::date
+        ), 0)::numeric as today_revenue,
         count(*)::int as transaction_count
       from yizhifu_orders
       where status = 1
     `);
   const yizhifuRow = yizhifu.rows[0] ?? {};
-  const yizhifuSnapshotAdjustments = await getYizhifuSnapshotAdjustmentRows();
-  const yizhifuAdjustmentRevenue = yizhifuSnapshotAdjustments.reduce((sum, row) => sum + Number(row.money ?? 0), 0);
-  const yizhifuAdjustmentTransactions = yizhifuSnapshotAdjustments.reduce((sum, row) => sum + Number(row.orders ?? 0), 0);
-  const todayKey = new Date().toISOString().slice(0, 10);
-  const yizhifuAdjustmentTodayRevenue = yizhifuSnapshotAdjustments
-    .filter((row) => row.day === todayKey)
-    .reduce((sum, row) => sum + Number(row.money ?? 0), 0);
-  const yizhifuTransactions = Number(yizhifuRow.transaction_count ?? 0) + yizhifuAdjustmentTransactions;
+  const yizhifuTransactions = Number(yizhifuRow.transaction_count ?? 0);
   transactionCount += yizhifuTransactions;
   hasAnyData = hasAnyData || yizhifuTransactions > 0;
 
   if (yizhifuRate === null) {
     warnings.push(`Missing DATAOCEAN_FX_CNY_TO_${reportingCurrency}; Yizhifu is excluded from aggregate revenue.`);
   } else {
-    totalRevenue += (Number(yizhifuRow.total_revenue ?? 0) + yizhifuAdjustmentRevenue) * yizhifuRate;
-    todayRevenue += (Number(yizhifuRow.today_revenue ?? 0) + yizhifuAdjustmentTodayRevenue) * yizhifuRate;
+    totalRevenue += Number(yizhifuRow.total_revenue ?? 0) * yizhifuRate;
+    todayRevenue += Number(yizhifuRow.today_revenue ?? 0) * yizhifuRate;
   }
 
   const creem = await pool.query(`
