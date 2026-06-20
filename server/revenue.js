@@ -6,6 +6,7 @@ import {
   getSub2ApiRevenueEntryRows,
   getSub2ApiSummary,
 } from "./sub2api.js";
+import { getYizhifuSnapshotAdjustmentRows } from "./yizhifu.js";
 
 export async function queryRevenueMetric({ dataSource, metric, query }) {
   if (metric.key === "aggregate_revenue_trend") {
@@ -101,8 +102,9 @@ async function createAggregateRevenueTrendResult({ dataSource, metric, timeRange
       `,
       [start.toISOString()],
     );
+    const yizhifuSnapshotAdjustments = await getYizhifuSnapshotAdjustmentRows({ start });
     addRowsToBuckets({
-      rows: yizhifu.rows,
+      rows: [...yizhifu.rows, ...yizhifuSnapshotAdjustments],
       seriesName: "Yizhifu",
       stepSeconds,
       rate: yizhifuRate,
@@ -441,15 +443,22 @@ async function getRevenueTotals(reportingCurrency) {
       where status = 1
     `);
   const yizhifuRow = yizhifu.rows[0] ?? {};
-  const yizhifuTransactions = Number(yizhifuRow.transaction_count ?? 0);
+  const yizhifuSnapshotAdjustments = await getYizhifuSnapshotAdjustmentRows();
+  const yizhifuAdjustmentRevenue = yizhifuSnapshotAdjustments.reduce((sum, row) => sum + Number(row.money ?? 0), 0);
+  const yizhifuAdjustmentTransactions = yizhifuSnapshotAdjustments.reduce((sum, row) => sum + Number(row.orders ?? 0), 0);
+  const todayKey = getDateKeyInTimeZone(new Date(), "Asia/Shanghai");
+  const yizhifuAdjustmentTodayRevenue = yizhifuSnapshotAdjustments
+    .filter((row) => row.day === todayKey)
+    .reduce((sum, row) => sum + Number(row.money ?? 0), 0);
+  const yizhifuTransactions = Number(yizhifuRow.transaction_count ?? 0) + yizhifuAdjustmentTransactions;
   transactionCount += yizhifuTransactions;
   hasAnyData = hasAnyData || yizhifuTransactions > 0;
 
   if (yizhifuRate === null) {
     warnings.push(`Missing DATAOCEAN_FX_CNY_TO_${reportingCurrency}; Yizhifu is excluded from aggregate revenue.`);
   } else {
-    totalRevenue += Number(yizhifuRow.total_revenue ?? 0) * yizhifuRate;
-    todayRevenue += Number(yizhifuRow.today_revenue ?? 0) * yizhifuRate;
+    totalRevenue += (Number(yizhifuRow.total_revenue ?? 0) + yizhifuAdjustmentRevenue) * yizhifuRate;
+    todayRevenue += (Number(yizhifuRow.today_revenue ?? 0) + yizhifuAdjustmentTodayRevenue) * yizhifuRate;
   }
 
   const creem = await pool.query(`
@@ -634,4 +643,15 @@ function getDailyRangeWindow(timeRange) {
     start: new Date(now - config.durationMs),
     stepSeconds: 24 * 60 * 60,
   };
+}
+
+function getDateKeyInTimeZone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
