@@ -33,7 +33,16 @@ type ChartSeries = {
   data: Array<{ time: Time; value: number }>;
 };
 
-const seriesColors = ["#1652f0", "#00a37a", "#f59e0b", "#7c3aed", "#ef4444"];
+const fallbackSeriesColors = ["#1652f0", "#00a37a", "#f59e0b", "#7c3aed", "#ef4444", "#2d9cdb"];
+const preferredSeriesOrder = ["Creem", "Sub2API", "Zhupay", "Manual", "Yizhifu", "Total"];
+const seriesColorsByName = new Map<string, string>([
+  ["creem", "#1652f0"],
+  ["sub2api", "#00a37a"],
+  ["zhupay", "#f59e0b"],
+  ["manual", "#7c3aed"],
+  ["yizhifu", "#ef4444"],
+  ["total", "#2d9cdb"],
+]);
 
 export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
   const { intlLocale, t, tx } = useI18n();
@@ -134,6 +143,8 @@ export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
       return;
     }
 
+    clearHoverPriceLines(hoverPriceLinesRef);
+
     const nextNames = new Set(chartSeries.map((series) => series.name));
     for (const [name, series] of seriesRefs.current.entries()) {
       if (!nextNames.has(name)) {
@@ -145,12 +156,13 @@ export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
 
     chartSeries.forEach((series, index) => {
       const existing = seriesRefs.current.get(series.name);
-      const chartApi = existing ?? addPanelSeries(chart, panel, theme, index, chartSeries.length);
+      const color = getSeriesColor(series.name, index);
+      const chartApi = existing ?? addPanelSeries(chart, panel, theme, color, chartSeries.length);
 
       if (!existing) {
         seriesRefs.current.set(series.name, chartApi);
       }
-      chartApi.applyOptions(getSeriesDisplayOptions(series, chartSeries.length));
+      chartApi.applyOptions(getSeriesDisplayOptions(series, chartSeries.length, color, panel));
       chartApi.setData(series.data);
     });
 
@@ -206,7 +218,7 @@ export function TimeSeriesPanel({ panel, theme }: TimeSeriesPanelProps) {
         <div className="do-chart-legend">
           {chartSeries.map((series, index) => (
             <span key={series.name}>
-              <i style={{ background: seriesColors[index % seriesColors.length] }} />
+              <i style={{ background: getSeriesColor(series.name, index) }} />
               {tx(series.name)}
             </span>
           ))}
@@ -246,13 +258,15 @@ function createChartSeries(
 
   const timeline = createDenseTimeline(Array.from(allTimes), timeRange);
 
-  return Array.from(byName.entries()).map(([name, values]) => ({
-    name,
-    data: timeline.map((time) => ({
-      time: time as Time,
-      value: values.get(time) ?? 0,
-    })),
-  }));
+  return Array.from(byName.entries())
+    .sort(([left], [right]) => compareSeriesNames(left, right))
+    .map(([name, values]) => ({
+      name,
+      data: timeline.map((time) => ({
+        time: time as Time,
+        value: values.get(time) ?? 0,
+      })),
+    }));
 }
 
 function createDenseTimeline(times: number[], timeRange: TimeRange) {
@@ -311,11 +325,9 @@ function addPanelSeries(
   chart: IChartApi,
   panel: ChartSpec,
   theme: ThemeMode,
-  index: number,
+  color: string,
   seriesCount: number,
 ): ISeriesApi<"Line" | "Area"> {
-  const color = seriesColors[index % seriesColors.length];
-
   if (seriesCount > 1 || panel.style?.seriesStyle === "line") {
     return chart.addSeries(LineSeries, {
       ...(createMarketLineSeriesOptions(theme) as object),
@@ -331,15 +343,18 @@ function addPanelSeries(
   }) as ISeriesApi<"Line" | "Area">;
 }
 
-function getSeriesDisplayOptions(series: ChartSeries, seriesCount: number) {
+function getSeriesDisplayOptions(series: ChartSeries, seriesCount: number, color: string, panel: ChartSpec) {
+  const colorOptions = seriesCount > 1 || panel.style?.seriesStyle === "line"
+    ? { color }
+    : { lineColor: color, topColor: `${color}38`, bottomColor: `${color}05` };
+  const isSinglePoint = series.data.length < 2;
+
   if (seriesCount <= 1) {
-    return {};
+    return colorOptions;
   }
 
-  const isSinglePoint = series.data.length < 2;
-  const isTotal = series.name.toLowerCase() === "total";
-
   return {
+    ...colorOptions,
     lineVisible: !isSinglePoint,
     pointMarkersVisible: isSinglePoint,
     pointMarkersRadius: 4,
@@ -361,7 +376,7 @@ function showHoverPriceLines(
     }
 
     visibleSeries.add(series);
-    const color = getSeriesColor(series, seriesRefs);
+    const color = getSeriesColorForApi(series, seriesRefs);
     const existing = hoverPriceLinesRef.current.get(series);
 
     if (existing) {
@@ -431,9 +446,41 @@ function getSeriesDataValue(data: unknown) {
   return Number.isFinite(value) ? value : undefined;
 }
 
-function getSeriesColor(series: ISeriesApi<"Line" | "Area">, seriesRefs: Map<string, ISeriesApi<"Line" | "Area">>) {
-  const index = Array.from(seriesRefs.values()).indexOf(series);
-  return seriesColors[Math.max(index, 0) % seriesColors.length];
+function getSeriesColor(name: string, fallbackIndex = 0) {
+  const normalized = normalizeSeriesName(name);
+  return seriesColorsByName.get(normalized) ?? fallbackSeriesColors[getStableColorIndex(normalized || name, fallbackIndex)];
+}
+
+function getSeriesColorForApi(series: ISeriesApi<"Line" | "Area">, seriesRefs: Map<string, ISeriesApi<"Line" | "Area">>) {
+  const entry = Array.from(seriesRefs.entries()).find(([, chartSeries]) => chartSeries === series);
+  return getSeriesColor(entry?.[0] ?? "", 0);
+}
+
+function compareSeriesNames(left: string, right: string) {
+  const leftIndex = preferredSeriesOrder.findIndex((name) => normalizeSeriesName(name) === normalizeSeriesName(left));
+  const rightIndex = preferredSeriesOrder.findIndex((name) => normalizeSeriesName(name) === normalizeSeriesName(right));
+
+  if (leftIndex !== -1 || rightIndex !== -1) {
+    return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
+  }
+
+  return left.localeCompare(right);
+}
+
+function normalizeSeriesName(name: string) {
+  return String(name || "").trim().toLowerCase();
+}
+
+function getStableColorIndex(value: string, fallbackIndex: number) {
+  if (!value) {
+    return fallbackIndex % fallbackSeriesColors.length;
+  }
+
+  let hash = 0;
+  for (const char of value) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+  return hash % fallbackSeriesColors.length;
 }
 
 function getLatestValue(series: ChartSeries[], fallback?: string | number | boolean) {
